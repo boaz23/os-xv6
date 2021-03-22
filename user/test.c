@@ -4,7 +4,16 @@
 #include "kernel/fcntl.h"
 
 void main(int argc, char *argv[]) {
-    trace((1 << SYS_getpid), getpid());
-    fprintf(2, "%d\n", getpid());
+    char *str = 0;
+    trace((1 << SYS_getpid) | (1 << SYS_fork) | (1 << SYS_sbrk), getpid());
+
+    if(fork() == 0){
+        fprintf(2, "child process id: %d\n", getpid());
+    } else {
+        wait(0);
+        fprintf(2, "parent process id: %d\n", getpid());
+        str = malloc(1024);
+        memcpy(str, "hello", 6);
+    }
     exit(0);
 }

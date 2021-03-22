@@ -164,6 +164,7 @@ void print_trace(struct proc *p, int syscall_num, uint64 return_value)
   int mask = 0;
   int pid = 0;
   char *syscall_name = 0;
+  int arg = 0;
 
   acquire(&p->lock);
   mask = p->trace_mask;
@@ -172,8 +173,17 @@ void print_trace(struct proc *p, int syscall_num, uint64 return_value)
 
   if((1 << syscall_num) & mask){
     syscall_name = syscalls_names[syscall_num];
-    
-    printf("%d: syscall %s  -> %d\n", pid, syscall_name, return_value);
+
+    if(syscall_num == SYS_fork){
+      printf("%d: syscall %s NULL -> %d\n", pid, syscall_name, return_value);
+    }
+    else if(syscall_num == SYS_kill || syscall_num == SYS_sbrk){
+      argint(0, &arg);
+      printf("%d: syscall %s %d -> %d\n", pid, syscall_name, arg, return_value);
+    }
+    else {
+      printf("%d: syscall %s  -> %d\n", pid, syscall_name, return_value);
+    }
   }
 }
 
