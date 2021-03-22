@@ -144,6 +144,23 @@ found:
   return p;
 }
 
+struct proc*
+find_proc(int pid){
+  struct proc *p = 0;
+
+  for(p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if(p->pid == pid) {
+      release(&p->lock);
+      return p;
+    } else {
+      release(&p->lock);
+    }
+  }
+
+  return 0;
+}
+
 // free a proc structure and the data hanging from it,
 // including user pages.
 // p->lock must be held.
@@ -653,4 +670,22 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+void 
+trace(int mask, int pid){
+  struct proc *p;
+
+  p = find_proc(pid);
+  //printf("trace proc.c pid : %d\n", pid);
+  if(!p){
+    //printf("trace proc.c proccess not found\n", p);
+    return;
+  }
+  //printf("trace proc.c proccess : %p\n", p);
+
+  acquire(&p->lock);
+  p->trace_mask = mask;
+  release(&p->lock);
+
 }
