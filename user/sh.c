@@ -49,14 +49,32 @@ struct backcmd {
   struct cmd *cmd;
 };
 
+struct pathdir {
+  char *dir_path;
+  struct pathdir *next;
+};
+
 int fork1(void);  // Fork but panics on failure.
 void panic(char*);
 struct cmd *parsecmd(char*);
 
+char*
+catenate_strings(char *s1, char *s2) {
+  uint s1_len = strlen(s1);
+  uint len = s1_len + strlen(s2) + 1;
+  char *catenated = malloc(sizeof(char)*len);
+  strcpy(catenated, s1);
+  strcpy(catenated + s1_len, s2);
+  return catenated;
+}
+
 // Execute cmd.  Never returns.
 void
-runcmd(struct cmd *cmd)
+runcmd(struct cmd *cmd, struct pathdir *path_dirs)
 {
+  int fd;
+  char *catenated_file_name;
+
   int p[2];
   struct backcmd *bcmd;
   struct execcmd *ecmd;
@@ -75,6 +93,24 @@ runcmd(struct cmd *cmd)
     ecmd = (struct execcmd*)cmd;
     if(ecmd->argv[0] == 0)
       exit(1);
+    if (ecmd->argv[0][0] != '/') {
+      while (path_dirs) {
+        catenated_file_name = catenate_strings(path_dirs->dir_path, ecmd->argv[0]);
+        fd = open(catenated_file_name, O_RDONLY);
+        if (fd > 0) {
+          close(fd);
+          break;
+        }
+        else {
+          free(catenated_file_name);
+        }
+
+        path_dirs = path_dirs->next;
+      }
+      if (path_dirs) {
+        ecmd->argv[0] = catenated_file_name;
+      }
+    }
     exec(ecmd->argv[0], ecmd->argv);
     fprintf(2, "exec %s failed\n", ecmd->argv[0]);
     break;
@@ -86,15 +122,15 @@ runcmd(struct cmd *cmd)
       fprintf(2, "open %s failed\n", rcmd->file);
       exit(1);
     }
-    runcmd(rcmd->cmd);
+    runcmd(rcmd->cmd, path_dirs);
     break;
 
   case LIST:
     lcmd = (struct listcmd*)cmd;
     if(fork1() == 0)
-      runcmd(lcmd->left);
+      runcmd(lcmd->left, path_dirs);
     wait(0);
-    runcmd(lcmd->right);
+    runcmd(lcmd->right, path_dirs);
     break;
 
   case PIPE:
@@ -106,14 +142,14 @@ runcmd(struct cmd *cmd)
       dup(p[1]);
       close(p[0]);
       close(p[1]);
-      runcmd(pcmd->left);
+      runcmd(pcmd->left, path_dirs);
     }
     if(fork1() == 0){
       close(0);
       dup(p[0]);
       close(p[0]);
       close(p[1]);
-      runcmd(pcmd->right);
+      runcmd(pcmd->right, path_dirs);
     }
     close(p[0]);
     close(p[1]);
@@ -124,7 +160,7 @@ runcmd(struct cmd *cmd)
   case BACK:
     bcmd = (struct backcmd*)cmd;
     if(fork1() == 0)
-      runcmd(bcmd->cmd);
+      runcmd(bcmd->cmd, path_dirs);
     break;
   }
   exit(0);
@@ -139,6 +175,48 @@ getcmd(char *buf, int nbuf)
   if(buf[0] == 0) // EOF
     return -1;
   return 0;
+}
+
+struct pathdir* parse_path() {
+  unsigned char c = 0;
+  char path_buffer[255];
+  int insertion_index = 0;
+  struct pathdir *path_dir_new = 0;
+  struct pathdir *path_dirs_tail = 0;
+  struct pathdir *path_dirs_head = 0;
+  int path_fd = open("/path", O_RDONLY);
+  if (path_fd < 0) {
+    return path_dirs_head;
+  }
+
+  path_dirs_head = malloc(sizeof(struct pathdir));
+  path_dirs_tail = path_dirs_head;
+  path_dirs_tail->dir_path = "./";
+  path_dirs_tail->next = 0;
+
+
+  while (read(path_fd, &c, 1) == 1) {
+    if (c == ':') {
+      path_buffer[insertion_index] = '\0';
+      insertion_index++;
+      
+      path_dir_new = malloc(sizeof(struct pathdir));
+      path_dirs_tail->next = path_dir_new;
+      path_dirs_tail = path_dir_new;
+
+      path_dirs_tail->dir_path = malloc(sizeof(char)*insertion_index);
+      path_dirs_tail->next = 0;
+      strcpy(path_dirs_tail->dir_path, path_buffer);
+
+      insertion_index = 0;
+    }
+    else {
+      path_buffer[insertion_index] = c;
+      insertion_index++;
+    }
+  }
+
+  return path_dirs_head;
 }
 
 int
@@ -165,7 +243,7 @@ main(void)
       continue;
     }
     if(fork1() == 0)
-      runcmd(parsecmd(buf));
+      runcmd(parsecmd(buf), parse_path());
     wait(0);
   }
   exit(0);
