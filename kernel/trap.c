@@ -164,8 +164,22 @@ clockintr()
 {
   acquire(&tickslock);
   ticks++;
+  update_pref_stats();
   wakeup(&ticks);
   release(&tickslock);
+}
+
+// return how many clock tick interrupts have occurred
+// since start.
+uint64
+uptime(void)
+{
+  uint xticks;
+
+  acquire(&tickslock);
+  xticks = ticks;
+  release(&tickslock);
+  return xticks;
 }
 
 // check if it's an external interrupt or software interrupt,

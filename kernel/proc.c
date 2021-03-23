@@ -119,6 +119,7 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+  p->perf_stats.ctime = uptime();
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -389,6 +390,7 @@ exit(int status)
 
   p->xstate = status;
   p->state = ZOMBIE;
+  p->perf_stats.ttime = uptime();
 
   release(&wait_lock);
 
@@ -689,5 +691,30 @@ trace(int mask, int pid){
   acquire(&p->lock);
   p->trace_mask = mask;
   release(&p->lock);
+}
 
+void
+update_pref_stats() {
+  struct proc *p;
+
+  for(p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    int *p_time_stat = 0;
+    switch (p->state)
+    {
+      case SLEEPING:
+        p_time_stat = &p->perf_stats.stime;
+        break;
+      case RUNNABLE:
+        p_time_stat = &p->perf_stats.retime;
+        break;
+      case RUNNING:
+        p_time_stat = &p->perf_stats.rutime;
+        break;
+    }
+    if (p_time_stat) {
+      *p_time_stat += 1;
+    }
+    release(&p->lock);
+  }
 }

@@ -108,4 +108,5 @@ struct proc {
 
   // additinal data
   int trace_mask;
+  struct perf perf_stats;
 };
