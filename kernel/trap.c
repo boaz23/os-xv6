@@ -162,9 +162,9 @@ kerneltrap()
 void
 clockintr()
 {
+  update_pref_stats();
   acquire(&tickslock);
   ticks++;
-  update_pref_stats();
   wakeup(&ticks);
   release(&tickslock);
 }

@@ -119,7 +119,14 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
-  p->perf_stats.ctime = uptime();
+  p->perf_stats = (struct perf){
+    .ctime = uptime(),
+    .ttime = -1,
+    .stime = 0,
+    .retime = 0,
+    .rutime = 0,
+    .bursttime = 0.0,
+  };
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -182,6 +189,7 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  p->trace_mask = 0;
 }
 
 // Create a user page table for a given process,
@@ -487,21 +495,21 @@ scheduler_round_robin(void)
   }
 }
 
-void scheduler_fcfs(void) __attribute__((noreturn));;
+//void scheduler_fcfs(void) __attribute__((noreturn));;
 void
 scheduler_fcfs(void)
 {
   printf("First come, first served (FCFS) scheduler\n");
 }
 
-void scheduler_srt(void) __attribute__((noreturn));;
+//void scheduler_srt(void) __attribute__((noreturn));;
 void
 scheduler_srt(void)
 {
   printf("Shortest remaining time (SRT) scheduler\n");
 }
 
-void scheduler_cfsd(void) __attribute__((noreturn));;
+//void scheduler_cfsd(void) __attribute__((noreturn));;
 void
 scheduler_cfsd(void)
 {
@@ -727,12 +735,9 @@ trace(int mask, int pid){
   struct proc *p;
 
   p = find_proc(pid);
-  //printf("trace proc.c pid : %d\n", pid);
   if(!p){
-    //printf("trace proc.c proccess not found\n", p);
     return;
   }
-  //printf("trace proc.c proccess : %p\n", p);
 
   acquire(&p->lock);
   p->trace_mask = mask;
