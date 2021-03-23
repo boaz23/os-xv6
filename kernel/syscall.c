@@ -159,12 +159,11 @@ static char *syscalls_names[] = {
 
 };
 
-void print_trace(struct proc *p, int syscall_num, uint64 return_value)
+void print_trace(struct proc *p, int syscall_num, int arg0, uint64 return_value)
 {
   int mask = 0;
   int pid = 0;
   char *syscall_name = 0;
-  int arg = 0;
 
   acquire(&p->lock);
   mask = p->trace_mask;
@@ -173,13 +172,12 @@ void print_trace(struct proc *p, int syscall_num, uint64 return_value)
 
   if((1 << syscall_num) & mask){
     syscall_name = syscalls_names[syscall_num];
-
+    
     if(syscall_num == SYS_fork){
       printf("%d: syscall %s NULL -> %d\n", pid, syscall_name, return_value);
     }
     else if(syscall_num == SYS_kill || syscall_num == SYS_sbrk){
-      argint(0, &arg);
-      printf("%d: syscall %s %d -> %d\n", pid, syscall_name, arg, return_value);
+      printf("%d: syscall %s %d -> %d\n", pid, syscall_name, arg0, return_value);
     }
     else {
       printf("%d: syscall %s  -> %d\n", pid, syscall_name, return_value);
@@ -191,12 +189,14 @@ void
 syscall(void)
 {
   int num;
+  int arg0 = 0;
   struct proc *p = myproc();
 
   num = p->trapframe->a7;
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
+    argint(0, &arg0);
     p->trapframe->a0 = syscalls[num]();
-    print_trace(p, num, p->trapframe->a0);
+    print_trace(p, num, arg0, p->trapframe->a0);
   } else {
     printf("%d %s: unknown sys call %d\n",
             p->pid, p->name, num);
