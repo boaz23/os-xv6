@@ -35,7 +35,7 @@ sys_wait(void)
   uint64 p;
   if(argaddr(0, &p) < 0)
     return -1;
-  return wait(p);
+  return wait(p, 0);
 }
 
 uint64
@@ -111,4 +111,13 @@ sys_trace(void)
 
   trace(mask, pid);
   return 0;
+}
+
+uint64
+sys_wait_stat(void) {
+  uint64 p_status;
+  uint64 perf;
+  argaddr(0, &p_status);
+  argaddr(1, &perf);
+  return wait(p_status, perf);
 }

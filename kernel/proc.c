@@ -402,7 +402,7 @@ exit(int status)
 // Wait for a child process to exit and return its pid.
 // Return -1 if this process has no children.
 int
-wait(uint64 addr)
+wait(uint64 addr, uint64 performance)
 {
   struct proc *np;
   int havekids, pid;
@@ -424,6 +424,11 @@ wait(uint64 addr)
           pid = np->pid;
           if(addr != 0 && copyout(p->pagetable, addr, (char *)&np->xstate,
                                   sizeof(np->xstate)) < 0) {
+            release(&np->lock);
+            release(&wait_lock);
+            return -1;
+          }
+          if (performance && copyout(p->pagetable, (uint64)performance, (char*)&np->perf_stats, sizeof(np->perf_stats)) < 0) {
             release(&np->lock);
             release(&wait_lock);
             return -1;
@@ -710,6 +715,8 @@ update_pref_stats() {
         break;
       case RUNNING:
         p_time_stat = &p->perf_stats.rutime;
+        break;
+      default:
         break;
     }
     if (p_time_stat) {

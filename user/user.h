@@ -24,6 +24,7 @@ char* sbrk(int);
 int sleep(int);
 int uptime(void);
 void trace(int, int);
+int wait_stat(int* status, struct perf * performance);
 
 // ulib.c
 int stat(const char*, struct stat*);
