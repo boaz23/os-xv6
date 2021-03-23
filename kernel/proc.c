@@ -453,19 +453,14 @@ wait(uint64 addr, uint64 performance)
   }
 }
 
-// Per-CPU process scheduler.
-// Each CPU calls scheduler() after setting itself up.
-// Scheduler never returns.  It loops, doing:
-//  - choose a process to run.
-//  - swtch to start running that process.
-//  - eventually that process transfers control
-//    via swtch back to the scheduler.
+void scheduler_round_robin(void) __attribute__((noreturn));;
 void
-scheduler(void)
+scheduler_round_robin(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
-  
+
+  printf("Round robin (RR, default) scheduler\n");
   c->proc = 0;
   for(;;){
     // Avoid deadlock by ensuring that devices can interrupt.
@@ -490,6 +485,50 @@ scheduler(void)
       release(&p->lock);
     }
   }
+}
+
+void scheduler_fcfs(void) __attribute__((noreturn));;
+void
+scheduler_fcfs(void)
+{
+  printf("First come, first served (FCFS) scheduler\n");
+}
+
+void scheduler_srt(void) __attribute__((noreturn));;
+void
+scheduler_srt(void)
+{
+  printf("Shortest remaining time (SRT) scheduler\n");
+}
+
+void scheduler_cfsd(void) __attribute__((noreturn));;
+void
+scheduler_cfsd(void)
+{
+  printf("Completely fair schdeduler (CFSD) scheduler\n");
+}
+
+// Per-CPU process scheduler.
+// Each CPU calls scheduler() after setting itself up.
+// Scheduler never returns.  It loops, doing:
+//  - choose a process to run.
+//  - swtch to start running that process.
+//  - eventually that process transfers control
+//    via swtch back to the scheduler.
+void
+scheduler(void)
+{
+#ifdef SCHED_DEFAULT
+  scheduler_round_robin();
+#elif SCHED_FCFS
+  scheduler_fcfs();
+#elif SCHED_SRT
+  scheduler_srt();
+#elif SCHED_CFSD
+  scheduler_cfsd();
+#else
+  panic("scheduler no policy");
+#endif
 }
 
 // Switch to scheduler.  Must hold only p->lock
