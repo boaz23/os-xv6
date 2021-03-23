@@ -71,6 +71,26 @@ ifneq ($(shell $(CC) -dumpspecs 2>/dev/null | grep -e '[^f]nopie'),)
 CFLAGS += -fno-pie -nopie
 endif
 
+ifndef SCHEDFLAG
+SCHEDFLAG = DEFAULT
+endif
+$(info $(SCHEDFLAG))
+ifeq ($(SCHEDFLAG), DEFAULT)
+CFLAGS += -DSCHED_DEFAULT
+else
+ifeq ($(SCHEDFLAG), FCFS)
+CFLAGS += -DSCHED_FCFS
+else
+ifeq ($(SCHEDFLAG), SRT)
+CFLAGS += -DSCHED_SRT
+else
+ifeq ($(SCHEDFLAG), CFSD)
+CFLAGS += -DSCHED_CFSD
+endif
+endif
+endif
+endif
+
 LDFLAGS = -z max-page-size=4096
 
 $K/kernel: $(OBJS) $K/kernel.ld $U/initcode
