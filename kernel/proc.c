@@ -810,3 +810,17 @@ update_pref_stats() {
     release(&p->lock);
   }
 }
+
+int
+set_priority(struct proc *p, int priority)
+{
+  #ifdef SCHED_CFSD
+  if (!(0 <= priority && priority <= 4)) {
+    return -1;
+  }
+  acquire(&p->lock);
+  p->priority = priority;
+  release(&p->lock);
+  return 0;
+  #endif
+}
