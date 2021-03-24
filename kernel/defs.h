@@ -108,6 +108,11 @@ void            procdump(void);
 void            trace(int, int);
 void            update_pref_stats();
 
+// proc_array_queue.c
+void            proc_array_queue_init(struct proc_array_queue *queue, char *lock_name);
+int             proc_array_queue_enqueue(struct proc_array_queue *queue, struct proc *proc);
+struct proc*    proc_array_queue_dequeue(struct proc_array_queue *queue);
+
 // swtch.S
 void            swtch(struct context*, struct context*);
 

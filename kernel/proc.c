@@ -4,6 +4,7 @@
 #include "riscv.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "proc_array_queue.h"
 #include "defs.h"
 
 struct cpu cpus[NCPU];
@@ -54,6 +55,11 @@ procinit(void)
       initlock(&p->lock, "proc");
       p->kstack = KSTACK((int) (p - proc));
   }
+
+  #ifdef SCHED_FCFS
+    proc_array_queue_init(&ready_queue);
+    proc_array_queue_init(&waiting_queue);
+  #endif
 }
 
 // Must be called with interrupts disabled,
@@ -271,6 +277,10 @@ userinit(void)
   p->state = RUNNABLE;
 
   release(&p->lock);
+
+  #ifdef SCHED_FCFS
+    insert_to_ready_queue(p);
+  #endif
 }
 
 // Grow or shrink user memory by n bytes.
@@ -342,6 +352,10 @@ fork(void)
   acquire(&np->lock);
   np->state = RUNNABLE;
   release(&np->lock);
+
+  #ifdef SCHED_FCFS
+    insert_to_ready_queue(np);
+  #endif
 
   return pid;
 }
@@ -495,11 +509,61 @@ scheduler_round_robin(void)
   }
 }
 
-//void scheduler_fcfs(void) __attribute__((noreturn));;
+
+// queues for the FCFS scheduling policy
+#ifdef SCHED_FCFS
+struct proc_array_queue ready_queue;
+struct proc_array_queue waiting_queue;
+
+static void
+insert_to_ready_queue(struct proc *proc)
+{
+  if (!proc_array_queue_enqueue(&ready_queue, proc)) {
+    panic("insert to ready queue - full");
+  }
+}
+
+static void
+insert_to_waiting_queue(struct proc *proc)
+{
+  if (!proc_array_queue_enqueue(&waiting_queue, proc)) {
+    panic("insert to ready queue - full");
+  }
+}
+#endif
+void scheduler_fcfs(void) __attribute__((noreturn));;
 void
 scheduler_fcfs(void)
 {
+  struct proc *p;
+  struct cpu *c = mycpu();
+
   printf("First come, first served (FCFS) scheduler\n");
+  c->proc = 0;
+  for(;;){
+    // Avoid deadlock by ensuring that devices can interrupt.
+    intr_on();
+
+    for(p = proc; p < &proc[NPROC]; p++) {
+      acquire(&p->lock);
+      if(p->state == RUNNABLE) {
+        // Switch to chosen process.  It is the process's job
+        // to release its lock and then reacquire it
+        // before jumping back to us.
+        c->proc = p;
+        for (int i = 0; i < QUANTUM && p->state == RUNNABLE; i++) {
+          p->state = RUNNING;
+          swtch(&c->context, &p->context);
+        }
+
+        // Process is done running for now.
+        // It should have changed its p->state before coming back.
+        c->proc = 0;
+      }
+      release(&p->lock);
+    }
+  }
+
 }
 
 //void scheduler_srt(void) __attribute__((noreturn));;
@@ -641,6 +705,9 @@ wakeup(void *chan)
       acquire(&p->lock);
       if(p->state == SLEEPING && p->chan == chan) {
         p->state = RUNNABLE;
+        #ifdef SCHED_FCFS
+          insert_to_ready_queue(p);
+        #endif
       }
       release(&p->lock);
     }
