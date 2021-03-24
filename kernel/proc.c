@@ -125,7 +125,11 @@ found:
     .stime = 0,
     .retime = 0,
     .rutime = 0,
-    .bursttime = 0.0,
+    .bursttime = QUANTUM,
+    #ifdef SCHED_CFSD
+    .priority = 2,
+    .rtratio = 0,
+    #endif
   };
 
   // Allocate a trapframe page.
@@ -461,34 +465,44 @@ wait(uint64 addr, uint64 performance)
   }
 }
 
+// Runs the process up to a QUANTOM of ticks
+// or until he gives up the running time.
+// Requires the lock of the process to be acquired before calling
+static void
+run_proc(struct proc *p)
+{
+  struct cpu *c = mycpu();
+  
+  c->proc = p;
+  for (int i = 0; i < QUANTUM && p->state == RUNNABLE; i++) {
+    p->state = RUNNING;
+
+    // Switch to chosen process.  It is the process's job
+    // to release its lock and then reacquire it
+    // before jumping back to us.
+    swtch(&c->context, &p->context);
+  }
+
+  // Process is done running for now.
+  // It should have changed its p->state before coming back.
+  c->proc = 0;
+}
+
 void scheduler_round_robin(void) __attribute__((noreturn));;
 void
 scheduler_round_robin(void)
 {
   struct proc *p;
-  struct cpu *c = mycpu();
-
   printf("Round robin (RR, default) scheduler\n");
-  c->proc = 0;
-  for(;;){
+  mycpu()->proc = 0;
+  for(;;) {
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
 
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        c->proc = p;
-        for (int i = 0; i < QUANTUM && p->state == RUNNABLE; i++) {
-          p->state = RUNNING;
-          swtch(&c->context, &p->context);
-        }
-
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
+        run_proc(p);
       }
       release(&p->lock);
     }
@@ -509,12 +523,37 @@ scheduler_srt(void)
   printf("Shortest remaining time (SRT) scheduler\n");
 }
 
-//void scheduler_cfsd(void) __attribute__((noreturn));;
+#ifdef SCHED_CFSD
+void scheduler_cfsd(void) __attribute__((noreturn));;
 void
 scheduler_cfsd(void)
 {
   printf("Completely fair schdeduler (CFSD) scheduler\n");
+  float decay_factors[] = { 0.2, 0.75, 1, 1.25, 5 };
+  struct proc *p;
+  struct proc *p_to_run;
+  for (;;) {
+    // Avoid deadlock by ensuring that devices can interrupt.
+    intr_on();
+
+    for (p = proc; p < &proc[NPROC]; p++) {
+      acquire(&p->lock);
+      if(p->state == RUNNABLE) {
+        if (!p_to_run || p_to_run->rtratio > p->rtratio) {
+          p_to_run = p;
+        }
+      }
+      release(&p->lock);
+    }
+
+    p = p_to_run;
+    acquire(&p->lock);
+    run_proc(p);
+    p->rtratio = (p->perf_stats.rutime * decay_factors[p->priority]) / (p->perf_stats.rutime + p->perf_stats.stime);
+    release(&p->lock);
+  }
 }
+#endif
 
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.

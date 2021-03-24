@@ -109,4 +109,8 @@ struct proc {
   // additinal data
   int trace_mask;
   struct perf perf_stats;
+  #ifdef SCHED_CFSD
+  int priority;
+  float rtratio;
+  #endif
 };
