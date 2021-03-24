@@ -3,13 +3,22 @@
 #include "user/user.h"
 #include "kernel/fcntl.h"
 
+void test_set_priority() {
+#ifdef SCHED_CFSD
+set_priority(3);
+#endif
+}
+
 void test_wait_stat() {
   int status;
   int ccount = 20;
   int i;
   struct perf perf;
-  int pid = fork();
+  int pid;
   int t0;
+
+  test_set_priority();
+  pid = fork();
   if (pid == 0) {
     sleep(10);
     t0 = uptime();

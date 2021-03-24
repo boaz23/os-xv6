@@ -128,6 +128,7 @@ sys_wait_stat(void)
   return wait(p_status, perf);
 }
 
+#ifdef SCHED_CFSD
 uint64
 sys_set_priority(void)
 {
@@ -141,3 +142,4 @@ sys_set_priority(void)
 
   return set_priority(myproc(), priority - 1);
 }
+#endif

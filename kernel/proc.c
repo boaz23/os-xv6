@@ -126,11 +126,11 @@ found:
     .retime = 0,
     .rutime = 0,
     .bursttime = QUANTUM,
-    #ifdef SCHED_CFSD
-    .priority = 2,
-    .rtratio = 0,
-    #endif
   };
+  #ifdef SCHED_CFSD
+  p->priority = 2;
+  p->rtratio = 0;
+  #endif
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -531,7 +531,7 @@ scheduler_cfsd(void)
   printf("Completely fair schdeduler (CFSD) scheduler\n");
   float decay_factors[] = { 0.2, 0.75, 1, 1.25, 5 };
   struct proc *p;
-  struct proc *p_to_run;
+  struct proc *p_to_run = 0;
   for (;;) {
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
@@ -811,10 +811,10 @@ update_pref_stats() {
   }
 }
 
+#ifdef SCHED_CFSD
 int
 set_priority(struct proc *p, int priority)
 {
-  #ifdef SCHED_CFSD
   if (!(0 <= priority && priority <= 4)) {
     return -1;
   }
@@ -822,5 +822,5 @@ set_priority(struct proc *p, int priority)
   p->priority = priority;
   release(&p->lock);
   return 0;
-  #endif
 }
+#endif
