@@ -5,6 +5,9 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#ifdef SCHED_FCFS
+  #include "proc_array_queue.h"
+#endif
 
 struct cpu cpus[NCPU];
 
@@ -25,6 +28,18 @@ extern char trampoline[]; // trampoline.S
 // memory model when using p->parent.
 // must be acquired before any p->lock.
 struct spinlock wait_lock;
+
+#ifdef SCHED_FCFS
+  struct proc_array_queue ready_queue;
+
+  static void
+  insert_to_ready_queue(struct proc *proc)
+  {
+    if (!proc_array_queue_enqueue(&ready_queue, proc)) {
+      panic("insert to ready queue - full");
+    }
+  }
+#endif
 
 // Allocate a page for each process's kernel stack.
 // Map it high in memory, followed by an invalid
@@ -54,6 +69,10 @@ procinit(void)
       initlock(&p->lock, "proc");
       p->kstack = KSTACK((int) (p - proc));
   }
+
+  #ifdef SCHED_FCFS
+    proc_array_queue_init(&ready_queue, "readyQueue");
+  #endif
 }
 
 // Must be called with interrupts disabled,
@@ -275,6 +294,10 @@ userinit(void)
   p->state = RUNNABLE;
 
   release(&p->lock);
+
+  #ifdef SCHED_FCFS
+    insert_to_ready_queue(p);
+  #endif
 }
 
 // Grow or shrink user memory by n bytes.
@@ -346,6 +369,10 @@ fork(void)
   acquire(&np->lock);
   np->state = RUNNABLE;
   release(&np->lock);
+
+  #ifdef SCHED_FCFS
+    insert_to_ready_queue(np);
+  #endif
 
   return pid;
 }
@@ -508,12 +535,31 @@ scheduler_round_robin(void)
   }
 }
 
-//void scheduler_fcfs(void) __attribute__((noreturn));;
+#ifdef SCHED_FCFS
+void scheduler_fcfs(void) __attribute__((noreturn));;
 void
 scheduler_fcfs(void)
 {
+  struct proc *p;
+  struct cpu *c = mycpu();
 
+  c->proc = 0;
+  for(;;){
+    // Avoid deadlock by ensuring that devices can interrupt.
+    intr_on();
+
+    p = proc_array_queue_dequeue(&ready_queue);
+    if(p){
+      acquire(&p->lock);
+      run_proc(p);
+      if(p->state == RUNNABLE){
+        insert_to_ready_queue(p);
+      }
+      release(&p->lock);
+    }
+  }
 }
+#endif
 
 //void scheduler_srt(void) __attribute__((noreturn));;
 void
@@ -678,6 +724,9 @@ wakeup(void *chan)
       acquire(&p->lock);
       if(p->state == SLEEPING && p->chan == chan) {
         p->state = RUNNABLE;
+        #ifdef SCHED_FCFS
+          insert_to_ready_queue(p);
+        #endif
       }
       release(&p->lock);
     }
