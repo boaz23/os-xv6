@@ -6,6 +6,8 @@
 
 volatile static int started = 0;
 
+void print_info();
+
 // start() jumps here in supervisor mode on all CPUs.
 void
 main()
@@ -13,20 +15,7 @@ main()
   if(cpuid() == 0){
     consoleinit();
     printfinit();
-    printf("\n");
-    printf("xv6 kernel is booting\n");
-    printf("\n");
-    #ifdef SCHED_DEFAULT
-      printf("Round robin (RR, default) scheduler\n");
-    #elif SCHED_FCFS
-      printf("First come, first served (FCFS) scheduler\n");
-    #elif SCHED_SRT
-      printf("Shortest remaining time (SRT) scheduler\n");
-    #elif SCHED_CFSD
-      printf("Completely fair schdeduler (CFSD) scheduler\n");
-    #else
-      panic("scheduler no policy");
-    #endif
+    print_info();
     kinit();         // physical page allocator
     kvminit();       // create kernel page table
     kvminithart();   // turn on paging
@@ -53,4 +42,38 @@ main()
   }
 
   scheduler();        
+}
+
+void print_welcome();
+void print_scheduling_policy();
+
+void
+print_info()
+{
+  print_welcome();
+  print_scheduling_policy();
+}
+
+void
+print_welcome()
+{
+  printf("\n");
+  printf("xv6 kernel is booting\n");
+  printf("\n");
+}
+
+void
+print_scheduling_policy()
+{
+  #ifdef SCHED_DEFAULT
+    printf("Round robin (RR, default) scheduler\n");
+  #elif SCHED_FCFS
+    printf("First come, first served (FCFS) scheduler\n");
+  #elif SCHED_SRT
+    printf("Shortest remaining time (SRT) scheduler\n");
+  #elif SCHED_CFSD
+    printf("Completely fair schdeduler (CFSD) scheduler\n");
+  #else
+    panic("scheduler no policy");
+  #endif
 }
