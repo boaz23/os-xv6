@@ -569,11 +569,17 @@ scheduler_srt(void)
 }
 
 #ifdef SCHED_CFSD
+
+void
+set_runtime_ratio(struct proc *p){
+  float decay_factors[] = { 0.2, 0.75, 1, 1.25, 5 };
+    p->rtratio = (p->perf_stats.rutime * decay_factors[p->priority]) / (p->perf_stats.rutime + p->perf_stats.stime);
+}
+
 void scheduler_cfsd(void) __attribute__((noreturn));;
 void
 scheduler_cfsd(void)
 {
-  float decay_factors[] = { 0.2, 0.75, 1, 1.25, 5 };
   struct proc *p;
   struct proc *p_to_run = 0;
   for (;;) {
@@ -593,7 +599,7 @@ scheduler_cfsd(void)
     p = p_to_run;
     acquire(&p->lock);
     run_proc(p);
-    p->rtratio = (p->perf_stats.rutime * decay_factors[p->priority]) / (p->perf_stats.rutime + p->perf_stats.stime);
+    set_runtime_ratio(p);
     release(&p->lock);
   }
 }
@@ -867,6 +873,7 @@ set_priority(struct proc *p, int priority)
   }
   acquire(&p->lock);
   p->priority = priority;
+  set_runtime_ratio(p);
   release(&p->lock);
   return 0;
 }
