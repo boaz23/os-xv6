@@ -16,6 +16,17 @@ main()
     printf("\n");
     printf("xv6 kernel is booting\n");
     printf("\n");
+    #ifdef SCHED_DEFAULT
+      printf("Round robin (RR, default) scheduler\n");
+    #elif SCHED_FCFS
+      printf("First come, first served (FCFS) scheduler\n");
+    #elif SCHED_SRT
+      printf("Shortest remaining time (SRT) scheduler\n");
+    #elif SCHED_CFSD
+      printf("Completely fair schdeduler (CFSD) scheduler\n");
+    #else
+      panic("scheduler no policy");
+    #endif
     kinit();         // physical page allocator
     kvminit();       // create kernel page table
     kvminithart();   // turn on paging

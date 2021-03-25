@@ -493,7 +493,6 @@ void
 scheduler_round_robin(void)
 {
   struct proc *p;
-  printf("Round robin (RR, default) scheduler\n");
   mycpu()->proc = 0;
   for(;;) {
     // Avoid deadlock by ensuring that devices can interrupt.
@@ -513,14 +512,14 @@ scheduler_round_robin(void)
 void
 scheduler_fcfs(void)
 {
-  printf("First come, first served (FCFS) scheduler\n");
+
 }
 
 //void scheduler_srt(void) __attribute__((noreturn));;
 void
 scheduler_srt(void)
 {
-  printf("Shortest remaining time (SRT) scheduler\n");
+
 }
 
 #ifdef SCHED_CFSD
@@ -528,7 +527,6 @@ void scheduler_cfsd(void) __attribute__((noreturn));;
 void
 scheduler_cfsd(void)
 {
-  printf("Completely fair schdeduler (CFSD) scheduler\n");
   float decay_factors[] = { 0.2, 0.75, 1, 1.25, 5 };
   struct proc *p;
   struct proc *p_to_run = 0;
