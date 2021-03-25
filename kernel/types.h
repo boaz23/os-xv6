@@ -15,5 +15,9 @@ struct perf {
   int stime;
   int retime;
   int rutime;
+  #ifdef FLOAT_ALLOWED
   float bursttime;
+  #elif FLOAT_SIMULATE_BY_INT
+  uint32 bursttime;
+  #endif
 };

@@ -111,6 +111,11 @@ struct proc {
   struct perf perf_stats;
   #ifdef SCHED_CFSD
   int priority;
+
+  #ifdef FLOAT_ALLOWED
   float rtratio;
+  #elif FLOAT_SIMULATE_BY_INT
+  uint32 rtratio;
+  #endif
   #endif
 };
