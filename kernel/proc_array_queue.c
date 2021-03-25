@@ -61,22 +61,3 @@ proc_array_queue_dequeue(struct proc_array_queue *queue)
   release(&queue->lock);
   return result;
 }
-
-void
-proc_array_queue_fix_holes(struct proc_array_queue *queue) {
-  int i = 0;
-  int base_index = queue->base_index;
-  int base_state;
-  int current_index;
-  while (i < queue->size) {
-    base_state = queue->array[base_index] == 0;
-    current_index = base_index;
-    while ((queue->array[current_index] == 0) == base_state) {
-      current_index++;
-      i++;
-    }
-    if (base_state) {
-      
-    }
-  }
-}
