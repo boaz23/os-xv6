@@ -174,12 +174,7 @@ clockintr()
 uint64
 uptime(void)
 {
-  uint xticks;
-
-  acquire(&tickslock);
-  xticks = ticks;
-  release(&tickslock);
-  return xticks;
+  return ticks;
 }
 
 // check if it's an external interrupt or software interrupt,
