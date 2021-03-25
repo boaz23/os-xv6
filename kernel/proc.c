@@ -144,7 +144,11 @@ found:
     .stime = 0,
     .retime = 0,
     .rutime = 0,
+    #ifdef FLOAT_ALLOWED
+    .bursttime = QUANTUM,
+    #else
     .bursttime = 0,
+    #endif
   };
   #ifdef SCHED_CFSD
   p->priority = 2;
@@ -492,6 +496,15 @@ wait(uint64 addr, uint64 performance)
   }
 }
 
+static void
+calc_burst_time(struct proc *p, uint new_bursttime)
+{
+  #ifndef FLOAT_ALLOWED
+    panic("process burst time - floating numbers disabled");
+  #endif
+  p->perf_stats.bursttime = ALPHA*new_bursttime + (1 - ALPHA)*p->perf_stats.bursttime;
+}
+
 // Runs the process up to a QUANTOM of ticks
 // or until he gives up the running time.
 // Requires the lock of the process to be acquired before calling
@@ -499,9 +512,10 @@ static void
 run_proc(struct proc *p)
 {
   struct cpu *c = mycpu();
+  int i = 0;
   
   c->proc = p;
-  for (int i = 0; i < QUANTUM && p->state == RUNNABLE; i++) {
+  for (i = 0; i < QUANTUM && p->state == RUNNABLE; i++) {
     p->state = RUNNING;
 
     // Switch to chosen process.  It is the process's job
@@ -510,11 +524,14 @@ run_proc(struct proc *p)
     swtch(&c->context, &p->context);
   }
 
+  calc_burst_time(p, i);
+  
   // Process is done running for now.
   // It should have changed its p->state before coming back.
   c->proc = 0;
 }
 
+#ifdef SCHED_DEFAULT
 void scheduler_round_robin(void) __attribute__((noreturn));;
 void
 scheduler_round_robin(void)
@@ -534,6 +551,7 @@ scheduler_round_robin(void)
     }
   }
 }
+#endif
 
 #ifdef SCHED_FCFS
 void scheduler_fcfs(void) __attribute__((noreturn));;
@@ -566,16 +584,37 @@ void scheduler_srt(void) __attribute__((noreturn));;
 void
 scheduler_srt(void)
 {
+  struct proc *p;
+  struct proc *p_to_run = 0;
+  for (;;) {
+    // Avoid deadlock by ensuring that devices can interrupt.
+    intr_on();
 
+    p_to_run = 0;
+    for (p = proc; p < &proc[NPROC]; p++) {
+      acquire(&p->lock);
+      if(p->state == RUNNABLE && (!p_to_run || p_to_run->perf_stats.bursttime > p->perf_stats.bursttime)) {
+        p_to_run = p;
+      }
+      release(&p->lock);
+    }
+
+    p = p_to_run;
+    acquire(&p->lock);
+    run_proc(p);
+    release(&p->lock);
+  }
 }
 #endif
 
 #ifdef SCHED_CFSD
-
 void
-set_runtime_ratio(struct proc *p){
+set_runtime_ratio(struct proc *p) {
+  #ifndef FLOAT_ALLOWED
+    panic("process runtime ration - floating numbers disabled");
+  #endif
   float decay_factors[] = { 0.2, 0.75, 1, 1.25, 5 };
-    p->rtratio = (p->perf_stats.rutime * decay_factors[p->priority]) / (p->perf_stats.rutime + p->perf_stats.stime);
+  p->rtratio = (p->perf_stats.rutime * decay_factors[p->priority]) / (p->perf_stats.rutime + p->perf_stats.stime);
 }
 
 void scheduler_cfsd(void) __attribute__((noreturn));;
