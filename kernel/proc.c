@@ -352,6 +352,9 @@ fork(void)
 
   //TODO maybe we need to acuqire the parent
   np->trace_mask = p->trace_mask;
+  #ifdef SCHED_CFSD
+  np->priority = p->priority;
+  #endif
 
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
