@@ -8,6 +8,7 @@
 #include "elf.h"
 
 static int loadseg(pde_t *pgdir, uint64 addr, struct inode *ip, uint offset, uint sz);
+static struct inode* find_path(char*);
 
 int
 exec(char *path, char **argv)
@@ -23,7 +24,7 @@ exec(char *path, char **argv)
 
   begin_op();
 
-  if((ip = namei(path)) == 0){
+  if((ip = find_path(path)) == 0){
     end_op();
     return -1;
   }
@@ -154,4 +155,54 @@ loadseg(pagetable_t pagetable, uint64 va, struct inode *ip, uint offset, uint sz
   }
   
   return 0;
+}
+
+void
+catenate_strings(char *dest, char *s1, char *s2) {
+  uint s1_len = strlen(s1);
+  uint s2_len = strlen(s2);
+  safestrcpy(dest, s1, s1_len + 1);
+  safestrcpy(dest + s1_len, s2, s2_len + 1);
+}
+
+static int
+next_path(struct inode *ip_path, int *offset, char *path_buf)
+{
+  unsigned char c = 0;
+  int insertion_index = 0;
+  
+  while (readi(ip_path, 0, (uint64)&c, (*offset)++, sizeof(unsigned char)) == sizeof(unsigned char)) {
+    if (c == ':') {
+      path_buf[insertion_index] = '\0';
+      return 1;
+    }
+    else {
+      path_buf[insertion_index] = c;
+      insertion_index++;
+    }
+  }
+
+  return 0;
+}
+
+static
+struct inode* find_path(char* path)
+{
+  struct inode *ip = namei(path);
+  struct inode *ip_path = 0;
+  int offset = 0;
+  char next_path_buf[MAXPATH];
+  char catenated_path_buf[MAXPATH];
+  if (!ip) {
+    ip_path = namei("/path");
+    if (ip_path) {
+      ilock(ip_path);
+      while (!ip && next_path(ip_path, &offset, next_path_buf)) {
+        catenate_strings(catenated_path_buf, next_path_buf, path);
+        ip = namei(catenated_path_buf);
+      }
+      iunlockput(ip_path);
+    }
+  }
+  return ip;
 }

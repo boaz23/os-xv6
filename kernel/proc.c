@@ -125,7 +125,7 @@ found:
     .stime = 0,
     .retime = 0,
     .rutime = 0,
-    .bursttime = QUANTUM,
+    .bursttime = 0,
   };
   #ifdef SCHED_CFSD
   p->priority = 2;
