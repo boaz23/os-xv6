@@ -561,12 +561,14 @@ scheduler_fcfs(void)
 }
 #endif
 
-//void scheduler_srt(void) __attribute__((noreturn));;
+#ifdef SCHED_SRT
+void scheduler_srt(void) __attribute__((noreturn));;
 void
 scheduler_srt(void)
 {
 
 }
+#endif
 
 #ifdef SCHED_CFSD
 
@@ -586,6 +588,7 @@ scheduler_cfsd(void)
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
 
+    p_to_run = 0;
     for (p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
