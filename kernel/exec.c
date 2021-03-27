@@ -193,7 +193,7 @@ struct inode* find_path(char* path)
   int offset = 0;
   char next_path_buf[MAXPATH];
   char catenated_path_buf[MAXPATH];
-  if (!ip) {
+  if (!ip && path && path[0] != '\0' && path[0] != '/') {
     ip_path = namei("/path");
     if (ip_path) {
       ilock(ip_path);
