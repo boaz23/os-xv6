@@ -2251,7 +2251,9 @@ sbrkfail(char *s)
       sbrk(BIG - (uint64)sbrk(0));
       write(fds[1], "x", 1);
       // sit around until killed
-      for(;;) sleep(1000);
+      for(;;) {
+        sleep(1000);
+      }
     }
     if(pids[i] != -1)
       read(fds[0], &scratch, 1);
@@ -2261,10 +2263,15 @@ sbrkfail(char *s)
   // we'll be able to allocate here
   c = sbrk(PGSIZE);
   for(i = 0; i < sizeof(pids)/sizeof(pids[0]); i++){
-    if(pids[i] == -1)
+    if(pids[i] == -1) {
+      printf("sbrkfail: skipping %d\n", pids[i]);
       continue;
+    }
+    // printf("sbrkfail: killing %d\n", pids[i]);
     kill(pids[i]);
+    // printf("sbrkfail: killed %d\n", pids[i]);
     wait(0);
+    // printf("sbrkfail: collected %d\n", pids[i]);
   }
   if(c == (char*)0xffffffffffffffffL){
     printf("%s: failed sbrk leaked memory\n", s);

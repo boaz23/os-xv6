@@ -35,6 +35,7 @@ struct spinlock wait_lock;
   static void
   insert_to_ready_queue(struct proc *proc, int pid, char *from)
   {
+    // if (pid == 5 || pid == 6) {
     // if (pid > 2) {
     //   printf("%d: queueing %d - %s\n", cpuid(), pid, from);
     // }
@@ -420,6 +421,7 @@ void
 exit(int status)
 {
   struct proc *p = myproc();
+  // int pid = 0;
 
   if(p == initproc)
     panic("init exiting");
@@ -451,8 +453,11 @@ exit(int status)
   p->xstate = status;
   p->state = ZOMBIE;
   p->perf_stats.ttime = uptime();
+  // pid = p->pid;
 
   release(&wait_lock);
+
+  // printf("%d: %d exited", cpuid(), pid);
 
   // Jump into the scheduler, never to return.
   sched();
@@ -576,13 +581,12 @@ run_proc_core(struct proc *p, int limit)
   int i = 0;
   
   c->proc = p;
-  // if (p->pid > 2) {
-  //   printf("%d: running %d\n", cpuid(), p->pid);
-  // }
   if (limit < 0) {
-    while (p->state == RUNNABLE) {
-      run_proc_swtch(p, c);
-    }
+    // if (p->pid == 5 || p->pid == 6) {
+    // if (p->pid > 2) {
+    //   printf("%d: running %d\n", cpuid(), p->pid);
+    // }
+    run_proc_swtch(p, c);
   }
   else {
     for (i = 0; i < limit && p->state == RUNNABLE; i++) {
@@ -634,8 +638,6 @@ scheduler_fcfs(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
-  int add_to_ready_queue = 0;
-  int pid = 0;
 
   c->proc = 0;
   for(;;){
@@ -644,17 +646,9 @@ scheduler_fcfs(void)
 
     p = proc_array_queue_dequeue(&ready_queue);
     if(p){
-      add_to_ready_queue = 0;
       acquire(&p->lock);
       run_proc_core(p, -1);
-      if(p->state == RUNNABLE){
-        add_to_ready_queue = 1;
-        pid = p->pid;
-      }
       release(&p->lock);
-      if (add_to_ready_queue) {
-        insert_to_ready_queue(p, pid, "scheduler");
-      }
     }
   }
 }
@@ -839,6 +833,7 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   p->chan = chan;
   p->state = SLEEPING;
+  // if (p->pid == 5 || p->pid == 6) {
   // if (p->pid > 2) {
   //   printf("%d: %d going to sleep\n", cpuid(), p->pid);
   // }
@@ -910,15 +905,15 @@ kill(int pid)
         #endif
       }
       release(&p->lock);
+      #ifdef SCHED_FCFS
+      if (add_to_ready_queue) {
+        insert_to_ready_queue(p, pid, "kill");
+      }
+      #endif
 
       return 0;
     }
     release(&p->lock);
-    #ifdef SCHED_FCFS
-    if (add_to_ready_queue) {
-      insert_to_ready_queue(p, pid, "kill");
-    }
-    #endif
   }
   return -1;
 }

@@ -87,13 +87,13 @@ void
 print_scheduling_policy()
 {
   #ifdef SCHED_DEFAULT
-    printf("Round robin (RR, default) scheduler\n");
+    printf("scheduler: Round robin (RR, default)\n");
   #elif SCHED_FCFS
-    printf("First come, first served (FCFS) scheduler\n");
+    printf("scheduler: First come, first served (FCFS)\n");
   #elif SCHED_SRT
-    printf("Shortest remaining time (SRT) scheduler\n");
+    printf("scheduler: Shortest remaining time (SRT)\n");
   #elif SCHED_CFSD
-    printf("Completely fair schdeduler (CFSD) scheduler\n");
+    printf("scheduler: Completely fair schdeduler (CFSD)\n");
   #else
     panic("scheduler no policy");
   #endif
