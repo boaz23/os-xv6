@@ -33,8 +33,11 @@ struct spinlock wait_lock;
   struct proc_array_queue ready_queue;
 
   static void
-  insert_to_ready_queue(struct proc *proc)
+  insert_to_ready_queue(struct proc *proc, int pid, char *from)
   {
+    // if (pid > 2) {
+    //   printf("%d: queueing %d - %s\n", cpuid(), pid, from);
+    // }
     if (!proc_array_queue_enqueue(&ready_queue, proc)) {
       panic("insert to ready queue - full");
     }
@@ -283,6 +286,9 @@ void
 userinit(void)
 {
   struct proc *p;
+  #ifdef SCHED_FCFS
+  int pid = 0;
+  #endif
 
   p = allocproc();
   initproc = p;
@@ -301,10 +307,13 @@ userinit(void)
 
   p->state = RUNNABLE;
 
+  #ifdef SCHED_FCFS
+  pid = p->pid;
+  #endif
   release(&p->lock);
 
   #ifdef SCHED_FCFS
-    insert_to_ready_queue(p);
+    insert_to_ready_queue(p, pid, "userinit");
   #endif
 }
 
@@ -354,6 +363,7 @@ fork(void)
   np->trace_mask = p->trace_mask;
   #ifdef SCHED_CFSD
   np->priority = p->priority;
+  np->rtratio = p->rtratio;
   #endif
 
   // copy saved user registers.
@@ -382,7 +392,7 @@ fork(void)
   release(&np->lock);
 
   #ifdef SCHED_FCFS
-    insert_to_ready_queue(np);
+    insert_to_ready_queue(np, pid, "fork");
   #endif
 
   return pid;
@@ -550,19 +560,34 @@ calc_burst_time(struct proc *p, uint actual_bursttime)
 // or until he gives up the running time.
 // Requires the lock of the process to be acquired before calling
 static void
-run_proc(struct proc *p)
+run_proc_swtch(struct proc *p, struct cpu *c) {
+  p->state = RUNNING;
+
+  // Switch to chosen process.  It is the process's job
+  // to release its lock and then reacquire it
+  // before jumping back to us.
+  swtch(&c->context, &p->context);
+}
+
+static void
+run_proc_core(struct proc *p, int limit)
 {
   struct cpu *c = mycpu();
   int i = 0;
   
   c->proc = p;
-  for (i = 0; i < QUANTUM && p->state == RUNNABLE; i++) {
-    p->state = RUNNING;
-
-    // Switch to chosen process.  It is the process's job
-    // to release its lock and then reacquire it
-    // before jumping back to us.
-    swtch(&c->context, &p->context);
+  // if (p->pid > 2) {
+  //   printf("%d: running %d\n", cpuid(), p->pid);
+  // }
+  if (limit < 0) {
+    while (p->state == RUNNABLE) {
+      run_proc_swtch(p, c);
+    }
+  }
+  else {
+    for (i = 0; i < limit && p->state == RUNNABLE; i++) {
+      run_proc_swtch(p, c);
+    }
   }
 
   calc_burst_time(p, i);
@@ -571,6 +596,14 @@ run_proc(struct proc *p)
   // It should have changed its p->state before coming back.
   c->proc = 0;
 }
+
+#ifndef SCHED_FCFS
+static void
+run_proc(struct proc *p)
+{
+  run_proc_core(p, QUANTUM);
+}
+#endif
 
 #ifdef SCHED_DEFAULT
 void scheduler_round_robin(void) __attribute__((noreturn));;
@@ -601,6 +634,8 @@ scheduler_fcfs(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
+  int add_to_ready_queue = 0;
+  int pid = 0;
 
   c->proc = 0;
   for(;;){
@@ -609,12 +644,17 @@ scheduler_fcfs(void)
 
     p = proc_array_queue_dequeue(&ready_queue);
     if(p){
+      add_to_ready_queue = 0;
       acquire(&p->lock);
-      run_proc(p);
+      run_proc_core(p, -1);
       if(p->state == RUNNABLE){
-        insert_to_ready_queue(p);
+        add_to_ready_queue = 1;
+        pid = p->pid;
       }
       release(&p->lock);
+      if (add_to_ready_queue) {
+        insert_to_ready_queue(p, pid, "scheduler");
+      }
     }
   }
 }
@@ -799,6 +839,9 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   p->chan = chan;
   p->state = SLEEPING;
+  // if (p->pid > 2) {
+  //   printf("%d: %d going to sleep\n", cpuid(), p->pid);
+  // }
 
   sched();
 
@@ -816,17 +859,30 @@ void
 wakeup(void *chan)
 {
   struct proc *p;
+  #ifdef SCHED_FCFS
+  int add_to_ready_queue = 0;
+  int pid = 0;
+  #endif
 
   for(p = proc; p < &proc[NPROC]; p++) {
     if(p != myproc()){
+      #ifdef SCHED_FCFS
+      add_to_ready_queue = 0;
+      #endif
       acquire(&p->lock);
       if(p->state == SLEEPING && p->chan == chan) {
         p->state = RUNNABLE;
         #ifdef SCHED_FCFS
-          insert_to_ready_queue(p);
+        add_to_ready_queue = 1;
+        pid = p->pid;
         #endif
       }
       release(&p->lock);
+      #ifdef SCHED_FCFS
+      if (add_to_ready_queue) {
+        insert_to_ready_queue(p, pid, "wakeup");
+      }
+      #endif
     }
   }
 }
@@ -838,6 +894,9 @@ int
 kill(int pid)
 {
   struct proc *p;
+  #ifdef SCHED_FCFS
+  int add_to_ready_queue = 0;
+  #endif
 
   for(p = proc; p < &proc[NPROC]; p++){
     acquire(&p->lock);
@@ -846,11 +905,20 @@ kill(int pid)
       if(p->state == SLEEPING){
         // Wake process from sleep().
         p->state = RUNNABLE;
+        #ifdef SCHED_FCFS
+        add_to_ready_queue = 1;
+        #endif
       }
       release(&p->lock);
+
       return 0;
     }
     release(&p->lock);
+    #ifdef SCHED_FCFS
+    if (add_to_ready_queue) {
+      insert_to_ready_queue(p, pid, "kill");
+    }
+    #endif
   }
   return -1;
 }

@@ -6,6 +6,7 @@
 
 volatile static int started = 0;
 
+void print_booting();
 void print_info();
 void check_floating_point_policy();
 
@@ -16,6 +17,7 @@ main()
   if(cpuid() == 0){
     consoleinit();
     printfinit();
+    print_booting();
     kinit();         // physical page allocator
     kvminit();       // create kernel page table
     kvminithart();   // turn on paging
@@ -67,13 +69,18 @@ check_floating_point_policy()
     panic("floating point - no policy");
   #endif
 }
-
 void
-print_welcome()
+print_booting()
 {
   printf("\n");
   printf("xv6 kernel is booting\n");
   printf("\n");
+}
+
+void
+print_welcome()
+{
+  printf("xv6 kernel finished booting\n");
 }
 
 void
