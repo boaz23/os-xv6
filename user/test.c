@@ -8,6 +8,23 @@ void run_for(int ticks) {
   while (uptime() - t0 < ticks) { }
 }
 
+void yield() {
+  sleep(1);
+}
+
+void print_wait_stat() {
+  int status;
+  struct perf perf;
+  int pid = wait_stat(&status, &perf);
+  printf("child %d exited with status %d\n", pid, status);
+  printf("creation time:    %d\n", perf.ctime);
+  printf("termination time: %d\n", perf.ttime);
+  printf("running time:     %d\n", perf.rutime);
+  printf("runnable time:    %d\n", perf.retime);
+  printf("sleeping time:    %d\n", perf.stime);
+  printf("burst time time:  %d\n", perf.average_bursttime);
+}
+
 void test_wait_stat_task(void) {
   int status;
   int ccount = 20;
@@ -27,6 +44,49 @@ void test_wait_stat_task(void) {
   exit(7);
 }
 
+void srt_child0() {
+  run_for(6);
+  yield();
+}
+void srt_child1() {
+  run_for(2);
+  yield();
+}
+void srt_child2() {
+  run_for(4);
+  yield();
+  run_for(8);
+  yield();
+  run_for(7);
+  yield();
+}
+void srt_child3() {
+  run_for(6);
+  yield();
+  run_for(3);
+  yield();
+}
+void test_srt(void) {
+  void (*tasks[])(void) = {
+    &srt_child2,
+    &srt_child0,
+    &srt_child3,
+    &srt_child1,
+  };
+  int pids[sizeof(tasks)/sizeof(void*)];
+  int len = sizeof(tasks)/sizeof(void*);
+  for (int i = 0; i < len; i++) {
+    if ((pids[i] = fork()) == 0) {
+      tasks[i]();
+      exit(0);
+    }
+  }
+  for (int i = 0; i < len; i++) {
+    printf("\ni %d\n", i);
+    print_wait_stat();
+  }
+}
+
 void test_bursttime(void) {
   run_for(18);
 }
@@ -37,24 +97,14 @@ set_priority(3);
 #endif
 }
 
-void print_wait_stat(void (*child_task)(void)) {
-  int status;
-  struct perf perf;
-  int pid;
-
-  pid = fork();
+void measure_performance(void (*child_task)(void)) {
+  int pid = fork();
   if (pid == 0) {
     child_task();
+    exit(0);
   }
   else {
-    pid = wait_stat(&status, &perf);
-    printf("child (%d) exited with status %d\n", pid, status);
-    printf("creation time:    %d\n", perf.ctime);
-    printf("termination time: %d\n", perf.ttime);
-    printf("running time:     %d\n", perf.rutime);
-    printf("runnable time:    %d\n", perf.retime);
-    printf("sleeping time:    %d\n", perf.stime);
-    printf("burst time time:  %d\n", perf.average_bursttime);
+    print_wait_stat();
   }
 }
 
@@ -81,6 +131,6 @@ void test_trace() {
 }
 
 void main(int argc, char *argv[]) {
-  print_wait_stat(&test_wait_stat_task);
+  measure_performance(&test_srt);
   exit(0);
 }
