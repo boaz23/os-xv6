@@ -331,6 +331,20 @@ growproc(int n)
   return 0;
 }
 
+#ifdef SCHED_CFSD
+void
+perf_copy_from_parent(struct proc *p, struct proc *np)
+{
+  struct perf *perf = &np->perf_stats_parent;
+  perf->ctime = p->perf_stats.ctime;
+  perf->ttime = p->perf_stats.ttime;
+  perf->stime = p->perf_stats.stime + p->perf_stats_parent.stime;
+  perf->stime = p->perf_stats.retime + p->perf_stats_parent.retime;
+  perf->stime = p->perf_stats.rutime + p->perf_stats_parent.rutime;
+  perf->average_bursttime = p->perf_stats.average_bursttime;
+}
+#endif
+
 // Create a new process, copying the parent.
 // Sets up child kernel stack to return as if from fork() system call.
 int
@@ -535,7 +549,7 @@ run_proc_swtch(struct proc *p, struct cpu *c) {
 }
 
 static void
-run_proc_core(struct proc *p, int limit)
+run_proc_with_limit_core(struct proc *p, int limit)
 {
   struct cpu *c = mycpu();
   int i = 0;
@@ -563,11 +577,53 @@ run_proc_core(struct proc *p, int limit)
   c->proc = 0;
 }
 
-#ifndef SCHED_FCFS
-static void
-run_proc(struct proc *p)
+void
+run_proc_with_limit(struct proc *p, int limit, int lock)
 {
-  run_proc_core(p, QUANTUM);
+  if (p) {
+    if (lock) {
+      acquire(&p->lock);
+    }
+    run_proc_with_limit_core(p, limit);
+    release(&p->lock);
+  }
+}
+
+#ifndef SCHED_DEFAULT
+static void
+run_proc_for_quantum(struct proc *p, int lock)
+{
+  run_proc_with_limit(p, QUANTUM, lock);
+}
+#endif
+
+#ifdef SCHED_DEFAULT
+static void
+run_proc_for_quantum_no_locks(struct proc *p)
+{
+  run_proc_with_limit_core(p, QUANTUM);
+}
+#endif
+
+#if SCHED_SRT || SCHED_CFSD
+static struct proc*
+find_min_proc(int (*compare)(struct proc*, struct proc*))
+{
+  struct proc *p_to_run = 0;
+  for (struct proc *p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if(p->state == RUNNABLE && (!p_to_run || compare(p_to_run, p))) {
+      if (p_to_run) {
+        release(&p_to_run->lock);
+      }
+      p_to_run = p;
+    }
+    else {
+      release(&p->lock);
+    }
+  }
+
+  return p_to_run;
 }
 #endif
 
@@ -585,7 +641,7 @@ scheduler_round_robin(void)
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
-        run_proc(p);
+        run_proc_for_quantum_no_locks(p);
       }
       release(&p->lock);
     }
@@ -607,62 +663,33 @@ scheduler_fcfs(void)
     intr_on();
 
     p = proc_array_queue_dequeue(&ready_queue);
-    if(p){
-      acquire(&p->lock);
-      run_proc_core(p, -1);
-      release(&p->lock);
-    }
+    run_proc_for_quantum(p, 1);
   }
 }
 #endif
 
 #ifdef SCHED_SRT
+int compare_procs_srt(struct proc *p1, struct proc *p2)
+{
+  return p1->perf_stats.average_bursttime > p2->perf_stats.average_bursttime;
+}
+
 void scheduler_srt(void) __attribute__((noreturn));;
 void
 scheduler_srt(void)
 {
   struct proc *p;
-  struct proc *p_to_run = 0;
   for (;;) {
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
 
-    p_to_run = 0;
-    for (p = proc; p < &proc[NPROC]; p++) {
-      acquire(&p->lock);
-      if(p->state == RUNNABLE && (!p_to_run || p_to_run->perf_stats.average_bursttime > p->perf_stats.average_bursttime)) {
-        if (p_to_run) {
-          release(&p_to_run->lock);
-        }
-        p_to_run = p;
-      }
-      else {
-        release(&p->lock);
-      }
-    }
-
-    p = p_to_run;
-    if (p) {
-      run_proc(p);
-      release(&p->lock);
-    }
+    p = find_min_proc(&compare_procs_srt);
+    run_proc_for_quantum(p, 0);
   }
 }
 #endif
 
 #ifdef SCHED_CFSD
-void
-perf_copy_from_parent(struct proc *p, struct proc *np)
-{
-  struct perf *perf = &np.perf_stats_parent;
-  perf->ctime = p->perf_stats.ctime;
-  perf->ttime = p->perf_stats.ttime;
-  perf->stime = p->perf_stats.stime + p->perf_stats_parent.stime;
-  perf->stime = p->perf_stats.retime + p->perf_stats_parent.retime;
-  perf->stime = p->perf_stats.rutime + p->perf_stats_parent.rutime;
-  perf->average_bursttime = p->perf_stats.average_bursttime;
-}
-
 void
 set_runtime_ratio(struct proc *p)
 {
@@ -684,32 +711,22 @@ set_runtime_ratio(struct proc *p)
   p->rtratio = rtratio;
 }
 
+int compare_procs_cfsd(struct proc *p1, struct proc *p2)
+{
+  return p1->rtratio > p2->rtratio;
+}
+
 void scheduler_cfsd(void) __attribute__((noreturn));;
 void
 scheduler_cfsd(void)
 {
   struct proc *p;
-  struct proc *p_to_run = 0;
   for (;;) {
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
 
-    p_to_run = 0;
-    for (p = proc; p < &proc[NPROC]; p++) {
-      acquire(&p->lock);
-      if(p->state == RUNNABLE) {
-        if (!p_to_run || p_to_run->rtratio > p->rtratio) {
-          p_to_run = p;
-        }
-      }
-      release(&p->lock);
-    }
-
-    p = p_to_run;
-    acquire(&p->lock);
-    run_proc(p);
-    set_runtime_ratio(p);
-    release(&p->lock);
+    p = find_min_proc(&compare_procs_cfsd);
+    run_proc_for_quantum(p, 0);
   }
 }
 #endif

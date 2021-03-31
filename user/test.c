@@ -8,8 +8,18 @@ void run_for(int ticks) {
   while (uptime() - t0 < ticks) { }
 }
 
-void yield() {
+void sleep1(char *s) {
+  printf("%s yielding\n", s);
   sleep(1);
+}
+
+void print_performance(struct perf *perf) {
+  printf("creation time:    %d\n", perf->ctime);
+  printf("termination time: %d\n", perf->ttime);
+  printf("running time:     %d\n", perf->rutime);
+  printf("runnable time:    %d\n", perf->retime);
+  printf("sleeping time:    %d\n", perf->stime);
+  printf("burst time:       %d\n", perf->average_bursttime);
 }
 
 void print_wait_stat() {
@@ -17,12 +27,7 @@ void print_wait_stat() {
   struct perf perf;
   int pid = wait_stat(&status, &perf);
   printf("child %d exited with status %d\n", pid, status);
-  printf("creation time:    %d\n", perf.ctime);
-  printf("termination time: %d\n", perf.ttime);
-  printf("running time:     %d\n", perf.rutime);
-  printf("runnable time:    %d\n", perf.retime);
-  printf("sleeping time:    %d\n", perf.stime);
-  printf("burst time time:  %d\n", perf.average_bursttime);
+  print_performance(&perf);
 }
 
 void test_wait_stat_task(void) {
@@ -45,35 +50,43 @@ void test_wait_stat_task(void) {
 }
 
 void srt_child0() {
-  run_for(6);
-  yield();
+  printf("0 running\n");
+  run_for(4);
+  sleep1("0");
+  printf("0 running\n");
+  run_for(8);
+  sleep1("0");
+  printf("0 running\n");
+  run_for(7);
+  sleep1("0");
 }
 void srt_child1() {
-  run_for(2);
-  yield();
+  printf("1 running\n");
+  run_for(6);
+  sleep1("1");
 }
 void srt_child2() {
-  run_for(4);
-  yield();
-  run_for(8);
-  yield();
-  run_for(7);
-  yield();
+  printf("2 running\n");
+  run_for(6);
+  sleep1("2");
+  printf("2 running\n");
+  run_for(3);
+  sleep1("2");
 }
 void srt_child3() {
-  run_for(6);
-  yield();
-  run_for(3);
-  yield();
+  printf("3 running\n");
+  run_for(2);
+  sleep1("3");
 }
 void test_srt(void) {
   void (*tasks[])(void) = {
-    &srt_child2,
     &srt_child0,
-    &srt_child3,
     &srt_child1,
+    &srt_child2,
+    &srt_child3,
   };
   int pids[sizeof(tasks)/sizeof(void*)];
+  struct perf perfs[sizeof(tasks)/sizeof(void*)];
   int len = sizeof(tasks)/sizeof(void*);
   for (int i = 0; i < len; i++) {
     if ((pids[i] = fork()) == 0) {
@@ -82,9 +95,21 @@ void test_srt(void) {
     }
   }
   for (int i = 0; i < len; i++) {
-    printf("\ni %d\n", i);
-    print_wait_stat();
+    int status;
+    struct perf perf;
+    int pid = wait_stat(&status, &perf);
+    int j = pid - pids[0];
+    printf("i = %d exited\n", j);
+    perfs[j] = perf;
   }
+  printf("\n");
+  for (int i = 0; i < len; i++) {
+    printf("i = %d, pid = %d\n", i, pids[i]);
+    print_performance(&perfs[i]);
+    printf("\n");
+  }
+
+  printf("SRT test stats:\n");
 }
 
 void test_bursttime(void) {
