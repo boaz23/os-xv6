@@ -630,16 +630,22 @@ scheduler_srt(void)
     p_to_run = 0;
     for (p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
-      if(p->state == RUNNABLE && (!p_to_run || p_to_run->perf_stats.bursttime > p->perf_stats.bursttime)) {
+      if(p->state == RUNNABLE && (!p_to_run || p_to_run->perf_stats.average_bursttime > p->perf_stats.average_bursttime)) {
+        if (p_to_run) {
+          release(&p_to_run->lock);
+        }
         p_to_run = p;
       }
-      release(&p->lock);
+      else {
+        release(&p->lock);
+      }
     }
 
     p = p_to_run;
-    acquire(&p->lock);
-    run_proc(p);
-    release(&p->lock);
+    if (p) {
+      run_proc(p);
+      release(&p->lock);
+    }
   }
 }
 #endif
