@@ -110,8 +110,7 @@ sys_trace(void)
     return -1;
   }
 
-  trace(mask, pid);
-  return 0;
+  return trace(mask, pid);
 }
 
 uint64

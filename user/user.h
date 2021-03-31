@@ -23,7 +23,7 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
-void trace(int, int);
+int trace(int, int);
 int wait_stat(int*, struct perf*);
 #ifdef SCHED_CFSD
 int set_priority(int);

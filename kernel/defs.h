@@ -105,7 +105,7 @@ void            yield(void);
 int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
-void            trace(int, int);
+int             trace(int, int);
 void            update_pref_stats();
 #ifdef SCHED_CFSD
 int             set_priority(struct proc*, int);

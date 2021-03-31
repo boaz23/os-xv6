@@ -189,7 +189,7 @@ void print_trace(struct proc *p, int syscall_num, int arg0, uint64 return_value)
       printf("%d: syscall %s NULL -> %d\n", pid, syscall_name, return_value);
     }
     else if(syscall_num == SYS_kill || syscall_num == SYS_sbrk){
-      printf("%d: syscall %s %d -> %d\n", pid, syscall_name, arg0, return_value);
+      printf("%d: syscall %s %d -> %d\n", pid, syscall_name, arg0, (int)return_value);
     }
     else {
       printf("%d: syscall %s  -> %d\n", pid, syscall_name, return_value);

@@ -128,9 +128,6 @@ static struct proc*
 allocproc(void)
 {
   struct proc *p;
-  #if FLOAT_SIMULATE_BY_INT
-  float bursttime;
-  #endif
 
   for(p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock);
@@ -152,12 +149,7 @@ found:
     .retime = 0,
     .rutime = 0,
   };
-  #ifdef FLOAT_ALLOWED
-  p->perf_stats.bursttime = QUANTUM;
-  #elif FLOAT_SIMULATE_BY_INT
-  bursttime = QUANTUM;
-  p->perf_stats.bursttime = *(uint32*)&bursttime;
-  #endif
+  // TODO: set bursttime
   #ifdef SCHED_CFSD
   p->priority = 2;
   p->rtratio = 0;
@@ -521,44 +513,8 @@ wait(uint64 addr, uint64 performance)
 static void
 calc_burst_time(struct proc *p, uint actual_bursttime)
 {
-  #ifndef FLOAT_SKIP
-  uint32 placeholder3 = 0;
-  float prev_bursttime;
-  uint32 placeholder2 = 0;
-  float new_bursttime;
-  #ifdef FLOAT_SIMULATE_BY_INT
-  uint32 placeholder;
-  #endif
-
-  #ifdef FLOAT_ALLOWED
-  prev_bursttime = p->perf_stats.bursttime;
-  #elif FLOAT_SIMULATE_BY_INT
-  placeholder = p->perf_stats.bursttime;
-  prev_bursttime = *(float*)&placeholder;
-  #elif FLOAT_DISABLED
-    panic("process burst time - floating numbers disabled");
-  #endif
-  if (cpuid() == 1) {
-    printf("hi %d %d\n", placeholder2, placeholder3);
-  }
-  new_bursttime = prev_bursttime;
-  if (cpuid() == 1) {
-    printf("hi\n");
-  }
-  new_bursttime = ALPHA*((float)actual_bursttime);
-  // if (cpuid() == 1) {
-  // printf("hi\n");
-  // }
   // new_bursttime = ALPHA*((float)actual_bursttime) + (1 - ALPHA)*prev_bursttime;
-  // if (cpuid() == 1) {
-  // printf("hi\n");
-  // }
-  #ifdef FLOAT_ALLOWED
-  p->perf_stats.bursttime = new_bursttime;
-  #elif FLOAT_SIMULATE_BY_INT
-  p->perf_stats.bursttime = *(uint32*)&new_bursttime;
-  #endif
-  #endif
+
 }
 
 // Runs the process up to a QUANTOM of ticks
@@ -684,21 +640,9 @@ scheduler_srt(void)
 
 #ifdef SCHED_CFSD
 void
-set_runtime_ratio(struct proc *p) {
-  #ifndef FLOAT_SKIP
-  float rtratio;
-  float decay_factors[] = { 0.2, 0.75, 1, 1.25, 5 };
-  
-  rtratio = (p->perf_stats.rutime * decay_factors[p->priority]) / (p->perf_stats.rutime + p->perf_stats.stime);
-
-  #ifdef FLOAT_ALLOWED
-  p->rtratio = rtratio;
-  #elif FLOAT_SIMULATE_BY_INT
-  p->rtratio = *(uint32)&rtratio;
-  #elif FLOAT_DISABLED
-    panic("process runtime ration - floating numbers disabled");
-  #endif
-  #endif
+set_runtime_ratio(struct proc *p)
+{
+  // rtratio = (p->perf_stats.rutime * decay_factors[p->priority]) / (p->perf_stats.rutime + p->perf_stats.stime);
 }
 
 void scheduler_cfsd(void) __attribute__((noreturn));;
@@ -977,18 +921,19 @@ procdump(void)
   }
 }
 
-void 
+int 
 trace(int mask, int pid){
   struct proc *p;
 
   p = find_proc(pid);
   if(!p){
-    return;
+    return -1;
   }
 
   acquire(&p->lock);
   p->trace_mask = mask;
   release(&p->lock);
+  return 0;
 }
 
 void
