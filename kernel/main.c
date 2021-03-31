@@ -8,7 +8,6 @@ volatile static int started = 0;
 
 void print_booting();
 void print_info();
-void check_floating_point_policy();
 
 // start() jumps here in supervisor mode on all CPUs.
 void
@@ -31,7 +30,6 @@ main()
     fileinit();      // file table
     virtio_disk_init(); // emulated hard disk
     userinit();      // first user process
-    check_floating_point_policy();
     print_info();
     __sync_synchronize();
     started = 1;
@@ -58,17 +56,6 @@ print_info()
   print_scheduling_policy();
 }
 
-void
-check_floating_point_policy()
-{
-  #ifdef FLOAT_ALLOWED
-  #elif FLOAT_SIMULATE_BY_INT
-  #elif FLOAT_SKIP
-  #elif FLOAT_DISABLED
-  #else
-    panic("floating point - no policy");
-  #endif
-}
 void
 print_booting()
 {

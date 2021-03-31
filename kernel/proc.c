@@ -148,12 +148,8 @@ found:
     .stime = 0,
     .retime = 0,
     .rutime = 0,
+    .average_bursttime = QUANTUM*BURSTTIME_PRECESION,
   };
-  // TODO: set bursttime
-  #ifdef SCHED_CFSD
-  p->priority = 2;
-  p->rtratio = 0;
-  #endif
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -300,6 +296,11 @@ userinit(void)
 
   p->state = RUNNABLE;
 
+  #ifdef SCHED_CFSD
+  p->perf_stats_parent = p->perf_stats;
+  p->priority = 2;
+  p->rtratio = 0;
+  #endif
   #ifdef SCHED_FCFS
   pid = p->pid;
   #endif
@@ -355,6 +356,7 @@ fork(void)
   //TODO maybe we need to acuqire the parent
   np->trace_mask = p->trace_mask;
   #ifdef SCHED_CFSD
+  perf_copy_from_parent(p, np);
   np->priority = p->priority;
   np->rtratio = p->rtratio;
   #endif
@@ -511,10 +513,12 @@ wait(uint64 addr, uint64 performance)
 }
 
 static void
-calc_burst_time(struct proc *p, uint actual_bursttime)
+calc_burst_time(struct proc *p, int actual_bursttime)
 {
-  // new_bursttime = ALPHA*((float)actual_bursttime) + (1 - ALPHA)*prev_bursttime;
-
+  int actual_bursttime_weight = ALPHA*actual_bursttime;
+  int prev_bursttime = p->perf_stats.average_bursttime;
+  int prev_bursttime_weight = ((BURSTTIME_PRECESION - ALPHA)*prev_bursttime) / BURSTTIME_PRECESION;
+  p->perf_stats.average_bursttime = actual_bursttime_weight + prev_bursttime_weight;
 }
 
 // Runs the process up to a QUANTOM of ticks
@@ -535,8 +539,10 @@ run_proc_core(struct proc *p, int limit)
 {
   struct cpu *c = mycpu();
   int i = 0;
+  uint32 tick_start;
   
   c->proc = p;
+  tick_start = uptime();
   if (limit < 0) {
     // if (p->pid == 5 || p->pid == 6) {
     // if (p->pid > 2) {
@@ -550,7 +556,7 @@ run_proc_core(struct proc *p, int limit)
     }
   }
 
-  calc_burst_time(p, i);
+  calc_burst_time(p, uptime() - tick_start);
   
   // Process is done running for now.
   // It should have changed its p->state before coming back.
@@ -640,9 +646,36 @@ scheduler_srt(void)
 
 #ifdef SCHED_CFSD
 void
+perf_copy_from_parent(struct proc *p, struct proc *np)
+{
+  struct perf *perf = &np.perf_stats_parent;
+  perf->ctime = p->perf_stats.ctime;
+  perf->ttime = p->perf_stats.ttime;
+  perf->stime = p->perf_stats.stime + p->perf_stats_parent.stime;
+  perf->stime = p->perf_stats.retime + p->perf_stats_parent.retime;
+  perf->stime = p->perf_stats.rutime + p->perf_stats_parent.rutime;
+  perf->average_bursttime = p->perf_stats.average_bursttime;
+}
+
+void
 set_runtime_ratio(struct proc *p)
 {
-  // rtratio = (p->perf_stats.rutime * decay_factors[p->priority]) / (p->perf_stats.rutime + p->perf_stats.stime);
+  uint32 decay_factors[] = { 1, 3, 5, 7, 25 };
+  
+  int stime = p->perf_stats.stime + p->perf_stats_parent.stime;
+  int rutime = p->perf_stats.rutime + p->perf_stats_parent.rutime;
+
+  uint32 denominator = rutime + stime;
+  uint32 rutime_weighted;
+  uint32 rtratio;
+  if (denominator == 0) {
+    panic("runtime ratio - zero total");
+  }
+  else {
+    rutime_weighted = rutime * decay_factors[p->priority];
+    rtratio = rutime_weighted / denominator;
+  }
+  p->rtratio = rtratio;
 }
 
 void scheduler_cfsd(void) __attribute__((noreturn));;

@@ -110,12 +110,8 @@ struct proc {
   int trace_mask;
   struct perf perf_stats;
   #ifdef SCHED_CFSD
+  struct perf perf_stats_parent;
   int priority;
-
-  #ifdef FLOAT_ALLOWED
-  float rtratio;
-  #elif FLOAT_SIMULATE_BY_INT
   uint32 rtratio;
-  #endif
   #endif
 };

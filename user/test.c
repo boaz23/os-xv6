@@ -3,39 +3,48 @@
 #include "user/user.h"
 #include "kernel/fcntl.h"
 
+void run_for(int ticks) {
+  int t0 = uptime();
+  while (uptime() - t0 < ticks) { }
+}
+
+void test_wait_stat_task(void) {
+  int status;
+  int ccount = 20;
+
+  sleep(10);
+  for (int i = 0; i < ccount; i++) {
+    if (fork() == 0) {
+      run_for(2);
+      exit(0);
+    }
+  }
+  for (int i = 0; i < ccount; i++) {
+    wait(&status);
+  }
+  run_for(2);
+  printf("child (%d) exiting\n", getpid());
+  exit(7);
+}
+
+void test_bursttime(void) {
+  run_for(18);
+}
+
 void test_set_priority() {
 #ifdef SCHED_CFSD
 set_priority(3);
 #endif
 }
 
-void test_wait_stat() {
+void print_wait_stat(void (*child_task)(void)) {
   int status;
-  int ccount = 20;
-  int i;
   struct perf perf;
   int pid;
-  int t0;
 
-  test_set_priority();
   pid = fork();
   if (pid == 0) {
-    sleep(10);
-    t0 = uptime();
-    for (i = 0; i < ccount; i++) {
-      if (fork() == 0) {
-        t0 = uptime();
-        while (uptime() - t0 < 2) { }
-        exit(0);
-      }
-    }
-    for (i = 0; i < ccount; i++) {
-      wait(&status);
-    }
-    t0 = uptime();
-    while (uptime() - t0 < 2) { }
-    printf("child (%d) exiting\n", getpid());
-    exit(7);
+    child_task();
   }
   else {
     pid = wait_stat(&status, &perf);
@@ -45,6 +54,7 @@ void test_wait_stat() {
     printf("running time:     %d\n", perf.rutime);
     printf("runnable time:    %d\n", perf.retime);
     printf("sleeping time:    %d\n", perf.stime);
+    printf("burst time time:  %d\n", perf.average_bursttime);
   }
 }
 
@@ -71,6 +81,6 @@ void test_trace() {
 }
 
 void main(int argc, char *argv[]) {
-  test_wait_stat();
+  print_wait_stat(&test_wait_stat_task);
   exit(0);
 }
