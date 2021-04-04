@@ -589,22 +589,6 @@ run_proc_with_limit(struct proc *p, int limit, int lock)
   }
 }
 
-#ifndef SCHED_DEFAULT
-static void
-run_proc_for_quantum(struct proc *p, int lock)
-{
-  run_proc_with_limit(p, QUANTUM, lock);
-}
-#endif
-
-#ifdef SCHED_DEFAULT
-static void
-run_proc_for_quantum_no_locks(struct proc *p)
-{
-  run_proc_with_limit_core(p, QUANTUM);
-}
-#endif
-
 #if SCHED_SRT || SCHED_CFSD
 static struct proc*
 find_min_proc(int (*compare)(struct proc*, struct proc*))
@@ -641,7 +625,7 @@ scheduler_round_robin(void)
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
       if(p->state == RUNNABLE) {
-        run_proc_for_quantum_no_locks(p);
+        run_proc_with_limit_core(p, QUANTUM);
       }
       release(&p->lock);
     }
@@ -663,7 +647,7 @@ scheduler_fcfs(void)
     intr_on();
 
     p = proc_array_queue_dequeue(&ready_queue);
-    run_proc_for_quantum(p, 1);
+    run_proc_with_limit(p, -1, 1);
   }
 }
 #endif
@@ -684,7 +668,7 @@ scheduler_srt(void)
     intr_on();
 
     p = find_min_proc(&compare_procs_srt);
-    run_proc_for_quantum(p, 0);
+    run_proc_with_limit(p, QUANTUM, 0);
   }
 }
 #endif
@@ -702,7 +686,8 @@ set_runtime_ratio(struct proc *p)
   uint32 rutime_weighted;
   uint32 rtratio;
   if (denominator == 0) {
-    panic("runtime ratio - zero total");
+    // init proc might get here
+    rtratio = 0;
   }
   else {
     rutime_weighted = rutime * decay_factors[p->priority];
@@ -726,7 +711,11 @@ scheduler_cfsd(void)
     intr_on();
 
     p = find_min_proc(&compare_procs_cfsd);
-    run_proc_for_quantum(p, 0);
+    if (p) {
+      run_proc_with_limit_core(p, QUANTUM);
+      set_runtime_ratio(p);
+      release(&p->lock);
+    }
   }
 }
 #endif

@@ -76,6 +76,9 @@ usertrap(void)
   if(p->killed)
     exit(-1);
 
+  // in first come, first served, the process only gives up running time
+  // when it is blocked (no yield system call).
+  // could be implemented in the scheduler, but it was found buggy.
   #ifndef SCHED_FCFS
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2)
@@ -178,6 +181,10 @@ clockintr()
 uint64
 uptime(void)
 {
+  // why is locking needed here anyway?
+  // also, locking here might cause deadlock,
+  // probably due to the timer interrupt also wanting to
+  // lock.
   return ticks;
 }
 

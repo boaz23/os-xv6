@@ -3,7 +3,7 @@
 
 void print_performance(struct perf* performance) {
 	printf("perf: {\nctime:%d\nttime:%d\nstime:%d\nretime:%d\nruntime:%d\bursttime:%d}\n",
-	performance->ctime,performance->ttime,performance->stime,performance->retime,performance->rutime,performance->bursttime);
+	performance->ctime,performance->ttime,performance->stime,performance->retime,performance->rutime,performance->average_bursttime);
 }
 
 int main(void)
