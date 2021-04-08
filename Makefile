@@ -155,6 +155,7 @@ UPROGS=\
 	$U/_zombie\
 	$U/_test\
 	$U/_cp\
+	$U/_test_fcfs\
 
 fs.img: mkfs/mkfs README $U/path $(UPROGS)
 	mkfs/mkfs fs.img README $U/path $(UPROGS)

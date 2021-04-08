@@ -117,9 +117,32 @@ void test_bursttime(void) {
 }
 
 void test_set_priority() {
-#ifdef SCHED_CFSD
-set_priority(3);
-#endif
+  #ifdef SCHED_CFSD
+  int pid = fork();
+  if (pid == 0) {
+    if (set_priority(6) >= 0) {
+      printf("set priority: call didn't fail on 6.\n");
+      exit(7);
+    }
+    for (int i = 5; i > 0; i--) {
+      if (set_priority(i) < 0) {
+        printf("set priority: call failed on %d.\n", i);
+        exit(i + 1);
+      }
+    }
+    if (set_priority(0) >= 0) {
+      printf("set priority: call didn't fail on 0.\n");
+      exit(1);
+    }
+    run_for(4);
+    sleep(2);
+    printf("child exiting...\n");
+    exit(0);
+  }
+  else {
+    wait(0);
+  }
+  #endif
 }
 
 void measure_performance(void (*child_task)(void)) {
@@ -159,6 +182,6 @@ void test_trace() {
 
 void main(int argc, char *argv[]) {
   // measure_performance(&test_srt);
-  test_trace();
+  test_set_priority();
   exit(0);
 }
