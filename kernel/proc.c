@@ -213,6 +213,18 @@ freeproc(struct proc *p)
   p->xstate = 0;
   p->state = UNUSED;
   p->trace_mask = 0;
+  #ifdef SCHED_CFSD
+  p->priority = 2;
+  p->rtratio = 0;
+  p->perf_stats_parent = (struct perf){
+    .ctime = uptime(),
+    .ttime = -1,
+    .stime = 0,
+    .retime = 0,
+    .rutime = 0,
+    .average_bursttime = QUANTUM*BURSTTIME_PRECESION,
+  };
+  #endif
 }
 
 // Create a user page table for a given process,
@@ -335,13 +347,19 @@ growproc(int n)
 void
 perf_copy_from_parent(struct proc *p, struct proc *np)
 {
-  struct perf *perf = &np->perf_stats_parent;
-  perf->ctime = p->perf_stats.ctime;
-  perf->ttime = p->perf_stats.ttime;
-  perf->stime = p->perf_stats.stime + p->perf_stats_parent.stime;
-  perf->stime = p->perf_stats.retime + p->perf_stats_parent.retime;
-  perf->stime = p->perf_stats.rutime + p->perf_stats_parent.rutime;
-  perf->average_bursttime = p->perf_stats.average_bursttime;
+  // this is fine not having acquired the lock of the parent here since:
+  // * perf_stats_parent is only updated in here, allocproc and freeproc.
+  // * stime, retime, rutime of are the only fields that actually matter.
+  struct perf *np_perf_parent = &np->perf_stats_parent;
+  struct perf *p_perf = &p->perf_stats;
+  struct perf *p_perf_parent = &p->perf_stats_parent;
+  np_perf_parent->ctime = p_perf->ctime;
+  np_perf_parent->ttime = p_perf->ttime;
+  np_perf_parent->stime = p_perf->stime  + p_perf_parent->stime;
+  np_perf_parent->stime = p_perf->retime + p_perf_parent->retime;
+  np_perf_parent->stime = p_perf->rutime + p_perf_parent->rutime;
+  np_perf_parent->average_bursttime = p->perf_stats.average_bursttime;
+  *np_perf_parent = *p_perf;
 }
 #endif
 
