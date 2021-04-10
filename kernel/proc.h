@@ -112,6 +112,5 @@ struct proc {
   #ifdef SCHED_CFSD
   struct perf perf_stats_parent;
   int priority;
-  uint32 rtratio;
   #endif
 };

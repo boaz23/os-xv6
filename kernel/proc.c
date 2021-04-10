@@ -215,7 +215,6 @@ freeproc(struct proc *p)
   p->trace_mask = 0;
   #ifdef SCHED_CFSD
   p->priority = 2;
-  p->rtratio = 0;
   p->perf_stats_parent = (struct perf){
     .ctime = uptime(),
     .ttime = -1,
@@ -311,7 +310,6 @@ userinit(void)
   #ifdef SCHED_CFSD
   p->perf_stats_parent = p->perf_stats;
   p->priority = 2;
-  p->rtratio = 0;
   #endif
   #ifdef SCHED_FCFS
   pid = p->pid;
@@ -350,16 +348,16 @@ perf_copy_from_parent(struct proc *p, struct proc *np)
   // this is fine not having acquired the lock of the parent here since:
   // * perf_stats_parent is only updated in here, allocproc and freeproc.
   // * stime, retime, rutime of are the only fields that actually matter.
+  // * the maybe change in the parent stats isn't that critical (we may be 1 off)
   struct perf *np_perf_parent = &np->perf_stats_parent;
   struct perf *p_perf = &p->perf_stats;
   struct perf *p_perf_parent = &p->perf_stats_parent;
   np_perf_parent->ctime = p_perf->ctime;
   np_perf_parent->ttime = p_perf->ttime;
   np_perf_parent->stime = p_perf->stime  + p_perf_parent->stime;
-  np_perf_parent->stime = p_perf->retime + p_perf_parent->retime;
-  np_perf_parent->stime = p_perf->rutime + p_perf_parent->rutime;
+  np_perf_parent->retime = p_perf->retime + p_perf_parent->retime;
+  np_perf_parent->rutime = p_perf->rutime + p_perf_parent->rutime;
   np_perf_parent->average_bursttime = p->perf_stats.average_bursttime;
-  *np_perf_parent = *p_perf;
 }
 #endif
 
@@ -390,7 +388,6 @@ fork(void)
   #ifdef SCHED_CFSD
   perf_copy_from_parent(p, np);
   np->priority = p->priority;
-  np->rtratio = p->rtratio;
   #endif
 
   // copy saved user registers.
@@ -692,8 +689,8 @@ scheduler_srt(void)
 #endif
 
 #ifdef SCHED_CFSD
-void
-set_runtime_ratio(struct proc *p)
+uint32
+calc_runtime_ratio(struct proc *p)
 {
   uint32 decay_factors[] = { 1, 3, 5, 7, 25 };
   
@@ -704,19 +701,21 @@ set_runtime_ratio(struct proc *p)
   uint32 rutime_weighted;
   uint32 rtratio;
   if (denominator == 0) {
-    // init proc might get here
     rtratio = 0;
   }
   else {
     rutime_weighted = rutime * decay_factors[p->priority];
     rtratio = rutime_weighted / denominator;
   }
-  p->rtratio = rtratio;
+
+  return rtratio;
 }
 
 int compare_procs_cfsd(struct proc *p1, struct proc *p2)
 {
-  return p1->rtratio > p2->rtratio;
+  uint32 rtratio1 = calc_runtime_ratio(p1);
+  uint32 rtratio2 = calc_runtime_ratio(p2);
+  return rtratio1 > rtratio2;
 }
 
 void scheduler_cfsd(void) __attribute__((noreturn));;
@@ -731,7 +730,6 @@ scheduler_cfsd(void)
     p = find_min_proc(&compare_procs_cfsd);
     if (p) {
       run_proc_with_limit_core(p, QUANTUM);
-      set_runtime_ratio(p);
       release(&p->lock);
     }
   }
@@ -1036,7 +1034,6 @@ set_priority(struct proc *p, int priority)
   }
   acquire(&p->lock);
   p->priority = priority;
-  set_runtime_ratio(p);
   release(&p->lock);
   return 0;
 }
