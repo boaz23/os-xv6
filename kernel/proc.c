@@ -558,7 +558,7 @@ run_proc_swtch(struct proc *p, struct cpu *c) {
 }
 
 static void
-run_proc_with_limit_core(struct proc *p, int limit)
+run_proc_core(struct proc *p)
 {
   struct cpu *c = mycpu();
   uint32 tick_start;
@@ -574,19 +574,39 @@ run_proc_with_limit_core(struct proc *p, int limit)
   c->proc = 0;
 }
 
-void
-run_proc_with_limit(struct proc *p, int limit, int lock)
+#ifndef SCHED_FCFS
+static void
+run_proc_lock_if_runnable(struct proc *p)
+{
+  acquire(&p->lock);
+  if(p->state == RUNNABLE) {
+    run_proc_core(p);
+  }
+  release(&p->lock);
+}
+#endif
+
+#ifdef SCHED_FCFS
+static void
+run_nullable_proc_lock(struct proc *p)
 {
   if (p) {
-    if (lock) {
-      acquire(&p->lock);
-    }
-    run_proc_with_limit_core(p, limit);
+    acquire(&p->lock);
+    run_proc_core(p);
     release(&p->lock);
   }
 }
+#endif
 
 #if SCHED_SRT || SCHED_CFSD
+static void
+run_nullable_proc_lock_if_runnable(struct proc *p)
+{
+  if (p) {
+    run_proc_lock_if_runnable(p);
+  }
+}
+
 static struct proc*
 find_min_proc(int (*get_value)(struct proc*), int (*compare)(int min_value, int p_value))
 {
@@ -619,11 +639,7 @@ scheduler_round_robin(void)
     intr_on();
 
     for(p = proc; p < &proc[NPROC]; p++) {
-      acquire(&p->lock);
-      if(p->state == RUNNABLE) {
-        run_proc_with_limit_core(p, QUANTUM);
-      }
-      release(&p->lock);
+      run_proc_lock_if_runnable(p);
     }
   }
 }
@@ -643,7 +659,7 @@ scheduler_fcfs(void)
     intr_on();
 
     p = proc_array_queue_dequeue(&ready_queue);
-    run_proc_with_limit(p, -1, 1);
+    run_nullable_proc_lock(p);
   }
 }
 #endif
@@ -668,13 +684,7 @@ scheduler_srt(void)
     intr_on();
 
     p = find_min_proc(&get_value_srt, &compare_procs_srt);
-    if (p) {
-      acquire(&p->lock);
-      if (p->state == RUNNABLE) {
-        run_proc_with_limit_core(p, QUANTUM);
-      }
-      release(&p->lock);
-    }
+    run_nullable_proc_lock_if_runnable(p);
   }
 }
 #endif
@@ -722,13 +732,7 @@ scheduler_cfsd(void)
     intr_on();
 
     p = find_min_proc(&get_value_cfsd, &compare_procs_cfsd);
-    if (p) {
-      acquire(&p->lock);
-      if (p->state == RUNNABLE) {
-        run_proc_with_limit_core(p, QUANTUM);
-      }
-      release(&p->lock);
-    }
+    run_nullable_proc_lock_if_runnable(p);
   }
 }
 #endif
