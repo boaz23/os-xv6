@@ -211,6 +211,7 @@ freeproc(struct proc *p)
   p->trace_mask = 0;
   #ifdef SCHED_CFSD
   p->priority = 2;
+  #ifdef SCHED_CFSD_ACCUM_STATS
   p->perf_stats_parent = (struct perf){
     .ctime = uptime(),
     .ttime = -1,
@@ -219,6 +220,7 @@ freeproc(struct proc *p)
     .rutime = 0,
     .average_bursttime = QUANTUM*BURSTTIME_PRECESION,
   };
+  #endif
   #endif
 }
 
@@ -304,7 +306,9 @@ userinit(void)
   p->state = RUNNABLE;
 
   #ifdef SCHED_CFSD
+  #ifdef SCHED_CFSD_ACCUM_STATS
   p->perf_stats_parent = p->perf_stats;
+  #endif
   p->priority = 2;
   #endif
   #ifdef SCHED_FCFS
@@ -337,7 +341,7 @@ growproc(int n)
   return 0;
 }
 
-#ifdef SCHED_CFSD
+#if SCHED_CFSD && SCHED_CFSD_ACCUM_STATS
 void
 perf_copy_from_parent(struct proc *p, struct proc *np)
 {
@@ -350,7 +354,7 @@ perf_copy_from_parent(struct proc *p, struct proc *np)
   struct perf *p_perf_parent = &p->perf_stats_parent;
   np_perf_parent->ctime = p_perf->ctime;
   np_perf_parent->ttime = p_perf->ttime;
-  np_perf_parent->stime = p_perf->stime  + p_perf_parent->stime;
+  np_perf_parent->stime = p_perf->stime + p_perf_parent->stime;
   np_perf_parent->retime = p_perf->retime + p_perf_parent->retime;
   np_perf_parent->rutime = p_perf->rutime + p_perf_parent->rutime;
   np_perf_parent->average_bursttime = p->perf_stats.average_bursttime;
@@ -382,7 +386,9 @@ fork(void)
   //TODO maybe we need to acuqire the parent
   np->trace_mask = p->trace_mask;
   #ifdef SCHED_CFSD
+  #ifdef SCHED_CFSD_ACCUM_STATS
   perf_copy_from_parent(p, np);
+  #endif
   np->priority = p->priority;
   #endif
 
@@ -697,8 +703,13 @@ static uint32 decay_factors[] = { 1, 3, 5, 7, 25 };
 uint32
 calc_runtime_ratio(struct proc *p)
 {
+  #ifdef SCHED_CFSD_ACCUM_STATS
   int stime = p->perf_stats.stime + p->perf_stats_parent.stime;
   int rutime = p->perf_stats.rutime + p->perf_stats_parent.rutime;
+  #else
+  int stime = p->perf_stats.stime;
+  int rutime = p->perf_stats.rutime;
+  #endif
 
   uint32 denominator = rutime + stime;
   uint32 rutime_weighted;

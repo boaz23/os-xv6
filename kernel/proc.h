@@ -111,7 +111,9 @@ struct proc {
   int trace_mask;
   struct perf perf_stats;
   #ifdef SCHED_CFSD
+  #ifdef SCHED_CFSD_ACCUM_STATS
   struct perf perf_stats_parent;
+  #endif
   int priority;
   #endif
 };
