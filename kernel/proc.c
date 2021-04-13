@@ -35,10 +35,6 @@ struct spinlock wait_lock;
   static void
   insert_to_ready_queue(struct proc *proc, int pid, char *from)
   {
-    // if (pid == 5 || pid == 6) {
-    // if (pid > 2) {
-    //   printf("%d: queueing %d - %s\n", cpuid(), pid, from);
-    // }
     if (!proc_array_queue_enqueue(&ready_queue, proc)) {
       panic("insert to ready queue - full");
     }
@@ -555,8 +551,6 @@ calc_burst_time(struct proc *p, int actual_bursttime)
 // Requires the lock of the process to be acquired before calling
 static void
 run_proc_swtch(struct proc *p, struct cpu *c) {
-  p->state = RUNNING;
-
   // Switch to chosen process.  It is the process's job
   // to release its lock and then reacquire it
   // before jumping back to us.
@@ -567,24 +561,12 @@ static void
 run_proc_with_limit_core(struct proc *p, int limit)
 {
   struct cpu *c = mycpu();
-  int i = 0;
   uint32 tick_start;
   
-  c->proc = p;
   tick_start = uptime();
-  if (limit < 0) {
-    // if (p->pid == 5 || p->pid == 6) {
-    // if (p->pid > 2) {
-    //   printf("%d: running %d\n", cpuid(), p->pid);
-    // }
-    run_proc_swtch(p, c);
-  }
-  else {
-    for (i = 0; i < limit && p->state == RUNNABLE; i++) {
-      run_proc_swtch(p, c);
-    }
-  }
-
+  p->state = RUNNING;
+  c->proc = p;
+  run_proc_swtch(p, c);
   calc_burst_time(p, uptime() - tick_start);
   
   // Process is done running for now.
@@ -606,20 +588,19 @@ run_proc_with_limit(struct proc *p, int limit, int lock)
 
 #if SCHED_SRT || SCHED_CFSD
 static struct proc*
-find_min_proc(int (*compare)(struct proc*, struct proc*))
+find_min_proc(int (*get_value)(struct proc*), int (*compare)(int min_value, int p_value))
 {
   struct proc *p_to_run = 0;
+  int min_value = -1;
+  int p_value;
   for (struct proc *p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock);
-    if(p->state == RUNNABLE && (!p_to_run || compare(p_to_run, p))) {
-      if (p_to_run) {
-        release(&p_to_run->lock);
-      }
+    p_value = get_value(p);
+    if(p->state == RUNNABLE && (!p_to_run || compare(min_value, p_value))) {
+      min_value = p_value;
       p_to_run = p;
     }
-    else {
-      release(&p->lock);
-    }
+    release(&p->lock);
   }
 
   return p_to_run;
@@ -668,9 +649,13 @@ scheduler_fcfs(void)
 #endif
 
 #ifdef SCHED_SRT
-int compare_procs_srt(struct proc *p1, struct proc *p2)
+int get_value_srt(struct proc *p)
 {
-  return p1->perf_stats.average_bursttime > p2->perf_stats.average_bursttime;
+  return p->perf_stats.average_bursttime;
+}
+int compare_procs_srt(int min_value, int value)
+{
+  return min_value > value;
 }
 
 void scheduler_srt(void) __attribute__((noreturn));;
@@ -682,18 +667,24 @@ scheduler_srt(void)
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
 
-    p = find_min_proc(&compare_procs_srt);
-    run_proc_with_limit(p, QUANTUM, 0);
+    p = find_min_proc(&get_value_srt, &compare_procs_srt);
+    if (p) {
+      acquire(&p->lock);
+      if (p->state == RUNNABLE) {
+        run_proc_with_limit_core(p, QUANTUM);
+      }
+      release(&p->lock);
+    }
   }
 }
 #endif
 
 #ifdef SCHED_CFSD
+static uint32 decay_factors[] = { 1, 3, 5, 7, 25 };
+
 uint32
 calc_runtime_ratio(struct proc *p)
 {
-  uint32 decay_factors[] = { 1, 3, 5, 7, 25 };
-  
   int stime = p->perf_stats.stime + p->perf_stats_parent.stime;
   int rutime = p->perf_stats.rutime + p->perf_stats_parent.rutime;
 
@@ -711,11 +702,14 @@ calc_runtime_ratio(struct proc *p)
   return rtratio;
 }
 
-int compare_procs_cfsd(struct proc *p1, struct proc *p2)
+int get_value_cfsd(struct proc *p)
 {
-  uint32 rtratio1 = calc_runtime_ratio(p1);
-  uint32 rtratio2 = calc_runtime_ratio(p2);
-  return rtratio1 > rtratio2;
+  uint32 rtratio = calc_runtime_ratio(p);
+  return *(int*)(&rtratio);
+}
+int compare_procs_cfsd(int min_value, int value)
+{
+  return (*(uint32*)(&min_value)) > (*(uint32*)(&value));
 }
 
 void scheduler_cfsd(void) __attribute__((noreturn));;
@@ -727,9 +721,12 @@ scheduler_cfsd(void)
     // Avoid deadlock by ensuring that devices can interrupt.
     intr_on();
 
-    p = find_min_proc(&compare_procs_cfsd);
+    p = find_min_proc(&get_value_cfsd, &compare_procs_cfsd);
     if (p) {
-      run_proc_with_limit_core(p, QUANTUM);
+      acquire(&p->lock);
+      if (p->state == RUNNABLE) {
+        run_proc_with_limit_core(p, QUANTUM);
+      }
       release(&p->lock);
     }
   }
@@ -790,6 +787,13 @@ sched(void)
 void
 yield(void)
 {
+  struct cpu *c = mycpu();
+  c->ticks_running++;
+  if (c->ticks_running % QUANTUM != 0) {
+    return;
+  }
+  c->ticks_running = 0;
+
   struct proc *p = myproc();
   acquire(&p->lock);
   p->state = RUNNABLE;
@@ -838,10 +842,6 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   p->chan = chan;
   p->state = SLEEPING;
-  // if (p->pid == 5 || p->pid == 6) {
-  // if (p->pid > 2) {
-  //   printf("%d: %d going to sleep\n", cpuid(), p->pid);
-  // }
 
   sched();
 
