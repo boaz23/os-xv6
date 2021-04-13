@@ -615,10 +615,12 @@ find_min_proc(int (*get_value)(struct proc*), int (*compare)(int min_value, int 
   int p_value;
   for (struct proc *p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock);
-    p_value = get_value(p);
-    if(p->state == RUNNABLE && (!p_to_run || compare(min_value, p_value))) {
-      min_value = p_value;
-      p_to_run = p;
+    if(p->state == RUNNABLE) {
+      p_value = get_value(p);
+      if (!p_to_run || compare(min_value, p_value)) {
+        min_value = p_value;
+        p_to_run = p;
+      }
     }
     release(&p->lock);
   }
