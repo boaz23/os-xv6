@@ -89,6 +89,9 @@ handle_proc_signals(struct proc *p)
 {
   // TODO: should we lock here?
   // TODO: should execute with interrupts off?
+  void *signal_handler;
+  uint64 saved_sp;
+  char sigret_call[] = {0x00, 0x18, 0x08, 0x93, 0x00, 0x00, 0x00, 0x73};
 
   while (1) {
     if (p->killed) {
@@ -104,6 +107,40 @@ handle_proc_signals(struct proc *p)
     }
 
     yield();
+  }
+
+  // TODO: what if the signal is ignore and blocked
+  // TOOD: what we need to do with the sigmask of sigaction
+  for(int i = 0; i < 32; i++){
+    if(!((1 << i) & p->pending_signals)){
+      continue;
+    }
+
+    if((1 << i) & p->signal_mask){
+      continue;
+    }
+
+    signal_handler = p->signal_handlers[i];
+
+    if(signal_handler == (void *)SIG_IGN){
+      p->pending_signals &= ~(1 << i);
+      continue;
+    }
+
+    if(signal_handler == (void *)SIG_DFL){
+      exit(-1);
+    }
+
+    // TODO: what about the rest of the kernel signals
+
+    // assume userspace function
+    *p->backup_trapframe = *p->trapframe;
+    saved_sp = p->trapframe->sp;
+    copyout(p->pagetable, saved_sp, sigret_call, 3);
+    p->trapframe->sp = p->trapframe->sp - 3;
+    p->trapframe->ra = saved_sp;
+    p->trapframe->a0 = i;
+    p->trapframe->epc = (uint64)p->signal_handlers[i];
   }
 }
 

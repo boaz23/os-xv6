@@ -756,7 +756,7 @@ int sigaction(int signum, uint64 act_addr, uint64 old_act_addr){
 
 void
 sigret(void){
-
+  printf("in sig ret");
 }
 
 int
