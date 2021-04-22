@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "signal.h"
 
 struct cpu cpus[NCPU];
 
@@ -25,6 +26,8 @@ extern char trampoline[]; // trampoline.S
 // memory model when using p->parent.
 // must be acquired before any p->lock.
 struct spinlock wait_lock;
+
+int is_valid_signum(int signum);
 
 // Allocate a page for each process's kernel stack.
 // Map it high in memory, followed by an invalid
@@ -591,17 +594,33 @@ wakeup(void *chan)
 // The victim won't exit until it tries to return
 // to user space (see usertrap() in trap.c).
 int
-kill(int pid)
+kill(int pid, int signum)
 {
   struct proc *p;
+
+  if(!is_valid_signum(signum)){
+    return -1;
+  }
 
   for(p = proc; p < &proc[NPROC]; p++){
     acquire(&p->lock);
     if(p->pid == pid){
-      p->killed = 1;
-      if(p->state == SLEEPING){
-        // Wake process from sleep().
-        p->state = RUNNABLE;
+      // TODO: should we handle the logic of SIGKILL, SIGSTOP here or before returning to user space?
+      switch (signum)
+      {
+        case SIGKILL:
+          if(p->state == SLEEPING){
+            // Wake process from sleep().
+            p->state = RUNNABLE;
+          }
+          p->killed = 1;
+          break;
+        
+        default:
+          // TODO: should we not set the if the signal is ignored
+          // or ignore it before returning to user space?
+          p->pending_signals |= 1 << signum;
+          break;
       }
       release(&p->lock);
       return 0;
@@ -688,7 +707,7 @@ int sigaction(int signum, uint64 act_addr, uint64 old_act_addr){
   struct sigaction old_act;
   struct sigaction new_act;
 
-  if(!(signum == SIG_DFL || signum == SIG_IGN || signum == SIGCONT)){
+  if(!is_valid_signum(signum)){
     return -1;
   }
 
@@ -716,3 +735,8 @@ sigret(void){
 
 }
 
+int
+is_valid_signum(int signum)
+{
+  return signum < 32 && signum != SIGKILL && signum != SIGSTOP;
+}

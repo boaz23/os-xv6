@@ -114,11 +114,5 @@ struct proc {
 
   // TODO : Check if we need to lock the proccess when
   // we update the signals.
-  // update places code : fork, sigprocmask, exec, sigaction
+  // update places code: fork, sigprocmask, exec, sigaction, kill
 }; 
-
-#define SIG_DFL 0 /* default signal handling */
-#define SIG_IGN 1 /* ignore signal */
-#define SIGKILL 9
-#define SIGSTOP 17
-#define SIGCONT 19
