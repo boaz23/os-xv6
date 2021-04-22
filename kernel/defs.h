@@ -99,17 +99,12 @@ void            sched(void);
 void            setproc(struct proc*);
 void            sleep(void*, struct spinlock*);
 void            userinit(void);
-int             wait(uint64, uint64);
+int             wait(uint64);
 void            wakeup(void*);
 void            yield(void);
 int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
-int             trace(int, int);
-void            update_pref_stats();
-#ifdef SCHED_CFSD
-int             set_priority(struct proc*, int);
-#endif
 
 // swtch.S
 void            swtch(struct context*, struct context*);
@@ -151,7 +146,6 @@ void            trapinit(void);
 void            trapinithart(void);
 extern struct spinlock tickslock;
 void            usertrapret(void);
-uint64          uptime(void);
 
 // uart.c
 void            uartinit(void);

@@ -35,7 +35,7 @@ sys_wait(void)
   uint64 p;
   if(argaddr(0, &p) < 0)
     return -1;
-  return wait(p, 0);
+  return wait(p);
 }
 
 uint64
@@ -95,50 +95,3 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
-
-
-uint64
-sys_trace(void)
-{
-  int mask = 0;
-  int pid = 0;
-
-  if (argint(0, &mask) < 0) {
-    return -1;
-  }
-  if(argint(1, &pid) < 0){
-    return -1;
-  }
-
-  return trace(mask, pid);
-}
-
-uint64
-sys_wait_stat(void)
-{
-  uint64 p_status;
-  uint64 perf;
-  if (argaddr(0, &p_status) < 0) {
-    return -1;
-  }
-  if (argaddr(1, &perf) < 0) {
-
-  }
-  return wait(p_status, perf);
-}
-
-#ifdef SCHED_CFSD
-uint64
-sys_set_priority(void)
-{
-  int priority;
-  if (argint(0, &priority) < 0) {
-    return -1;
-  }
-  if (!(1 <= priority && priority <= 5)) {
-    return -1;
-  }
-
-  return set_priority(myproc(), priority - 1);
-}
-#endif

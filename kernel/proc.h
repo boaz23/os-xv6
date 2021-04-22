@@ -24,7 +24,6 @@ struct cpu {
   struct context context;     // swtch() here to enter scheduler().
   int noff;                   // Depth of push_off() nesting.
   int intena;                 // Were interrupts enabled before push_off()?
-  int ticks_running;
 };
 
 extern struct cpu cpus[NCPU];
@@ -106,14 +105,4 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
-
-  // additinal data
-  int trace_mask;
-  struct perf perf_stats;
-  #ifdef SCHED_CFSD
-  #ifdef SCHED_CFSD_ACCUM_STATS
-  struct perf perf_stats_parent;
-  #endif
-  int priority;
-  #endif
 };

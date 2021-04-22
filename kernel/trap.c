@@ -76,14 +76,9 @@ usertrap(void)
   if(p->killed)
     exit(-1);
 
-  // in first come, first served, the process only gives up running time
-  // when it is blocked (no yield system call).
-  // could be implemented in the scheduler, but it was found buggy.
-  #ifndef SCHED_FCFS
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2)
     yield();
-  #endif
 
   usertrapret();
 }
@@ -154,11 +149,9 @@ kerneltrap()
     panic("kerneltrap");
   }
 
-  #ifndef SCHED_FCFS
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)
     yield();
-  #endif
 
   // the yield() may have caused some traps to occur,
   // so restore trap registers for use by kernelvec.S's sepc instruction.
@@ -169,23 +162,10 @@ kerneltrap()
 void
 clockintr()
 {
-  update_pref_stats();
   acquire(&tickslock);
   ticks++;
   wakeup(&ticks);
   release(&tickslock);
-}
-
-// return how many clock tick interrupts have occurred
-// since start.
-uint64
-uptime(void)
-{
-  // why is locking needed here anyway?
-  // also, locking here might cause deadlock,
-  // probably due to the timer interrupt also wanting to
-  // lock.
-  return ticks;
 }
 
 // check if it's an external interrupt or software interrupt,

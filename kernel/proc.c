@@ -5,9 +5,6 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
-#ifdef SCHED_FCFS
-  #include "proc_array_queue.h"
-#endif
 
 struct cpu cpus[NCPU];
 
@@ -28,18 +25,6 @@ extern char trampoline[]; // trampoline.S
 // memory model when using p->parent.
 // must be acquired before any p->lock.
 struct spinlock wait_lock;
-
-#ifdef SCHED_FCFS
-  struct proc_array_queue ready_queue;
-
-  static void
-  insert_to_ready_queue(struct proc *proc, int pid, char *from)
-  {
-    if (!proc_array_queue_enqueue(&ready_queue, proc)) {
-      panic("insert to ready queue - full");
-    }
-  }
-#endif
 
 // Allocate a page for each process's kernel stack.
 // Map it high in memory, followed by an invalid
@@ -69,10 +54,6 @@ procinit(void)
       initlock(&p->lock, "proc");
       p->kstack = KSTACK((int) (p - proc));
   }
-
-  #ifdef SCHED_FCFS
-    proc_array_queue_init(&ready_queue, "readyQueue");
-  #endif
 }
 
 // Must be called with interrupts disabled,
@@ -138,14 +119,6 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
-  p->perf_stats = (struct perf){
-    .ctime = uptime(),
-    .ttime = -1,
-    .stime = 0,
-    .retime = 0,
-    .rutime = 0,
-    .average_bursttime = QUANTUM*BURSTTIME_PRECESION,
-  };
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -171,23 +144,6 @@ found:
   return p;
 }
 
-struct proc*
-find_proc(int pid){
-  struct proc *p = 0;
-
-  for(p = proc; p < &proc[NPROC]; p++) {
-    acquire(&p->lock);
-    if(p->pid == pid) {
-      release(&p->lock);
-      return p;
-    } else {
-      release(&p->lock);
-    }
-  }
-
-  return 0;
-}
-
 // free a proc structure and the data hanging from it,
 // including user pages.
 // p->lock must be held.
@@ -208,20 +164,6 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
-  p->trace_mask = 0;
-  #ifdef SCHED_CFSD
-  p->priority = 2;
-  #ifdef SCHED_CFSD_ACCUM_STATS
-  p->perf_stats_parent = (struct perf){
-    .ctime = uptime(),
-    .ttime = -1,
-    .stime = 0,
-    .retime = 0,
-    .rutime = 0,
-    .average_bursttime = QUANTUM*BURSTTIME_PRECESION,
-  };
-  #endif
-  #endif
 }
 
 // Create a user page table for a given process,
@@ -284,9 +226,6 @@ void
 userinit(void)
 {
   struct proc *p;
-  #ifdef SCHED_FCFS
-  int pid = 0;
-  #endif
 
   p = allocproc();
   initproc = p;
@@ -305,20 +244,7 @@ userinit(void)
 
   p->state = RUNNABLE;
 
-  #ifdef SCHED_CFSD
-  #ifdef SCHED_CFSD_ACCUM_STATS
-  p->perf_stats_parent = p->perf_stats;
-  #endif
-  p->priority = 2;
-  #endif
-  #ifdef SCHED_FCFS
-  pid = p->pid;
-  #endif
   release(&p->lock);
-
-  #ifdef SCHED_FCFS
-    insert_to_ready_queue(p, pid, "userinit");
-  #endif
 }
 
 // Grow or shrink user memory by n bytes.
@@ -340,26 +266,6 @@ growproc(int n)
   p->sz = sz;
   return 0;
 }
-
-#if SCHED_CFSD && SCHED_CFSD_ACCUM_STATS
-void
-perf_copy_from_parent(struct proc *p, struct proc *np)
-{
-  // this is fine not having acquired the lock of the parent here since:
-  // * perf_stats_parent is only updated in here, allocproc and freeproc.
-  // * stime, retime, rutime of are the only fields that actually matter.
-  // * the maybe change in the parent stats isn't that critical (we may be 1 off)
-  struct perf *np_perf_parent = &np->perf_stats_parent;
-  struct perf *p_perf = &p->perf_stats;
-  struct perf *p_perf_parent = &p->perf_stats_parent;
-  np_perf_parent->ctime = p_perf->ctime;
-  np_perf_parent->ttime = p_perf->ttime;
-  np_perf_parent->stime = p_perf->stime + p_perf_parent->stime;
-  np_perf_parent->retime = p_perf->retime + p_perf_parent->retime;
-  np_perf_parent->rutime = p_perf->rutime + p_perf_parent->rutime;
-  np_perf_parent->average_bursttime = p->perf_stats.average_bursttime;
-}
-#endif
 
 // Create a new process, copying the parent.
 // Sets up child kernel stack to return as if from fork() system call.
@@ -383,15 +289,6 @@ fork(void)
   }
   np->sz = p->sz;
 
-  //TODO maybe we need to acuqire the parent
-  np->trace_mask = p->trace_mask;
-  #ifdef SCHED_CFSD
-  #ifdef SCHED_CFSD_ACCUM_STATS
-  perf_copy_from_parent(p, np);
-  #endif
-  np->priority = p->priority;
-  #endif
-
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
 
@@ -407,6 +304,7 @@ fork(void)
   safestrcpy(np->name, p->name, sizeof(p->name));
 
   pid = np->pid;
+
   release(&np->lock);
 
   acquire(&wait_lock);
@@ -416,10 +314,6 @@ fork(void)
   acquire(&np->lock);
   np->state = RUNNABLE;
   release(&np->lock);
-
-  #ifdef SCHED_FCFS
-    insert_to_ready_queue(np, pid, "fork");
-  #endif
 
   return pid;
 }
@@ -446,7 +340,6 @@ void
 exit(int status)
 {
   struct proc *p = myproc();
-  // int pid = 0;
 
   if(p == initproc)
     panic("init exiting");
@@ -477,12 +370,8 @@ exit(int status)
 
   p->xstate = status;
   p->state = ZOMBIE;
-  p->perf_stats.ttime = uptime();
-  // pid = p->pid;
 
   release(&wait_lock);
-
-  // printf("%d: %d exited", cpuid(), pid);
 
   // Jump into the scheduler, never to return.
   sched();
@@ -492,7 +381,7 @@ exit(int status)
 // Wait for a child process to exit and return its pid.
 // Return -1 if this process has no children.
 int
-wait(uint64 addr, uint64 performance)
+wait(uint64 addr)
 {
   struct proc *np;
   int havekids, pid;
@@ -518,11 +407,6 @@ wait(uint64 addr, uint64 performance)
             release(&wait_lock);
             return -1;
           }
-          if (performance && copyout(p->pagetable, (uint64)performance, (char*)&np->perf_stats, sizeof(np->perf_stats)) < 0) {
-            release(&np->lock);
-            release(&wait_lock);
-            return -1;
-          }
           freeproc(np);
           release(&np->lock);
           release(&wait_lock);
@@ -543,213 +427,6 @@ wait(uint64 addr, uint64 performance)
   }
 }
 
-static void
-calc_burst_time(struct proc *p, int actual_bursttime)
-{
-  int actual_bursttime_weight = ALPHA*actual_bursttime;
-  int prev_bursttime = p->perf_stats.average_bursttime;
-  int prev_bursttime_weight = ((BURSTTIME_PRECESION - ALPHA)*prev_bursttime) / BURSTTIME_PRECESION;
-  p->perf_stats.average_bursttime = actual_bursttime_weight + prev_bursttime_weight;
-}
-
-// Runs the process up to a QUANTOM of ticks
-// or until he gives up the running time.
-// Requires the lock of the process to be acquired before calling
-static void
-run_proc_swtch(struct proc *p, struct cpu *c) {
-  // Switch to chosen process.  It is the process's job
-  // to release its lock and then reacquire it
-  // before jumping back to us.
-  swtch(&c->context, &p->context);
-}
-
-static void
-run_proc_core(struct proc *p)
-{
-  struct cpu *c = mycpu();
-  uint32 tick_start;
-  
-  tick_start = uptime();
-  p->state = RUNNING;
-  c->proc = p;
-  run_proc_swtch(p, c);
-  calc_burst_time(p, uptime() - tick_start);
-  
-  // Process is done running for now.
-  // It should have changed its p->state before coming back.
-  c->proc = 0;
-}
-
-#ifndef SCHED_FCFS
-static void
-run_proc_lock_if_runnable(struct proc *p)
-{
-  acquire(&p->lock);
-  if(p->state == RUNNABLE) {
-    run_proc_core(p);
-  }
-  release(&p->lock);
-}
-#endif
-
-#ifdef SCHED_FCFS
-static void
-run_nullable_proc_lock(struct proc *p)
-{
-  if (p) {
-    acquire(&p->lock);
-    run_proc_core(p);
-    release(&p->lock);
-  }
-}
-#endif
-
-#if SCHED_SRT || SCHED_CFSD
-static void
-run_nullable_proc_lock_if_runnable(struct proc *p)
-{
-  if (p) {
-    run_proc_lock_if_runnable(p);
-  }
-}
-
-static struct proc*
-find_min_proc(int (*get_value)(struct proc*), int (*compare)(int min_value, int p_value))
-{
-  struct proc *p_to_run = 0;
-  int min_value = -1;
-  int p_value;
-  for (struct proc *p = proc; p < &proc[NPROC]; p++) {
-    acquire(&p->lock);
-    if(p->state == RUNNABLE) {
-      p_value = get_value(p);
-      if (!p_to_run || compare(min_value, p_value)) {
-        min_value = p_value;
-        p_to_run = p;
-      }
-    }
-    release(&p->lock);
-  }
-
-  return p_to_run;
-}
-#endif
-
-#ifdef SCHED_DEFAULT
-void scheduler_round_robin(void) __attribute__((noreturn));;
-void
-scheduler_round_robin(void)
-{
-  struct proc *p;
-  mycpu()->proc = 0;
-  for(;;) {
-    // Avoid deadlock by ensuring that devices can interrupt.
-    intr_on();
-
-    for(p = proc; p < &proc[NPROC]; p++) {
-      run_proc_lock_if_runnable(p);
-    }
-  }
-}
-#endif
-
-#ifdef SCHED_FCFS
-void scheduler_fcfs(void) __attribute__((noreturn));;
-void
-scheduler_fcfs(void)
-{
-  struct proc *p;
-  struct cpu *c = mycpu();
-
-  c->proc = 0;
-  for(;;){
-    // Avoid deadlock by ensuring that devices can interrupt.
-    intr_on();
-
-    p = proc_array_queue_dequeue(&ready_queue);
-    run_nullable_proc_lock(p);
-  }
-}
-#endif
-
-#ifdef SCHED_SRT
-int get_value_srt(struct proc *p)
-{
-  return p->perf_stats.average_bursttime;
-}
-int compare_procs_srt(int min_value, int value)
-{
-  return min_value > value;
-}
-
-void scheduler_srt(void) __attribute__((noreturn));;
-void
-scheduler_srt(void)
-{
-  struct proc *p;
-  for (;;) {
-    // Avoid deadlock by ensuring that devices can interrupt.
-    intr_on();
-
-    p = find_min_proc(&get_value_srt, &compare_procs_srt);
-    run_nullable_proc_lock_if_runnable(p);
-  }
-}
-#endif
-
-#ifdef SCHED_CFSD
-static uint32 decay_factors[] = { 1, 3, 5, 7, 25 };
-
-uint32
-calc_runtime_ratio(struct proc *p)
-{
-  #ifdef SCHED_CFSD_ACCUM_STATS
-  int stime = p->perf_stats.stime + p->perf_stats_parent.stime;
-  int rutime = p->perf_stats.rutime + p->perf_stats_parent.rutime;
-  #else
-  int stime = p->perf_stats.stime;
-  int rutime = p->perf_stats.rutime;
-  #endif
-
-  uint32 denominator = rutime + stime;
-  uint32 rutime_weighted;
-  uint32 rtratio;
-  if (denominator == 0) {
-    rtratio = 0;
-  }
-  else {
-    rutime_weighted = rutime * decay_factors[p->priority];
-    rtratio = rutime_weighted / denominator;
-  }
-
-  return rtratio;
-}
-
-int get_value_cfsd(struct proc *p)
-{
-  uint32 rtratio = calc_runtime_ratio(p);
-  return *(int*)(&rtratio);
-}
-int compare_procs_cfsd(int min_value, int value)
-{
-  return (*(uint32*)(&min_value)) > (*(uint32*)(&value));
-}
-
-void scheduler_cfsd(void) __attribute__((noreturn));;
-void
-scheduler_cfsd(void)
-{
-  struct proc *p;
-  for (;;) {
-    // Avoid deadlock by ensuring that devices can interrupt.
-    intr_on();
-
-    p = find_min_proc(&get_value_cfsd, &compare_procs_cfsd);
-    run_nullable_proc_lock_if_runnable(p);
-  }
-}
-#endif
-
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
 // Scheduler never returns.  It loops, doing:
@@ -760,17 +437,31 @@ scheduler_cfsd(void)
 void
 scheduler(void)
 {
-#ifdef SCHED_DEFAULT
-  scheduler_round_robin();
-#elif SCHED_FCFS
-  scheduler_fcfs();
-#elif SCHED_SRT
-  scheduler_srt();
-#elif SCHED_CFSD
-  scheduler_cfsd();
-#else
-  panic("scheduler no policy");
-#endif
+  struct proc *p;
+  struct cpu *c = mycpu();
+  
+  c->proc = 0;
+  for(;;){
+    // Avoid deadlock by ensuring that devices can interrupt.
+    intr_on();
+
+    for(p = proc; p < &proc[NPROC]; p++) {
+      acquire(&p->lock);
+      if(p->state == RUNNABLE) {
+        // Switch to chosen process.  It is the process's job
+        // to release its lock and then reacquire it
+        // before jumping back to us.
+        p->state = RUNNING;
+        c->proc = p;
+        swtch(&c->context, &p->context);
+
+        // Process is done running for now.
+        // It should have changed its p->state before coming back.
+        c->proc = 0;
+      }
+      release(&p->lock);
+    }
+  }
 }
 
 // Switch to scheduler.  Must hold only p->lock
@@ -804,13 +495,6 @@ sched(void)
 void
 yield(void)
 {
-  struct cpu *c = mycpu();
-  c->ticks_running++;
-  if (c->ticks_running % QUANTUM != 0) {
-    return;
-  }
-  c->ticks_running = 0;
-
   struct proc *p = myproc();
   acquire(&p->lock);
   p->state = RUNNABLE;
@@ -876,30 +560,14 @@ void
 wakeup(void *chan)
 {
   struct proc *p;
-  #ifdef SCHED_FCFS
-  int add_to_ready_queue = 0;
-  int pid = 0;
-  #endif
 
   for(p = proc; p < &proc[NPROC]; p++) {
     if(p != myproc()){
-      #ifdef SCHED_FCFS
-      add_to_ready_queue = 0;
-      #endif
       acquire(&p->lock);
       if(p->state == SLEEPING && p->chan == chan) {
         p->state = RUNNABLE;
-        #ifdef SCHED_FCFS
-        add_to_ready_queue = 1;
-        pid = p->pid;
-        #endif
       }
       release(&p->lock);
-      #ifdef SCHED_FCFS
-      if (add_to_ready_queue) {
-        insert_to_ready_queue(p, pid, "wakeup");
-      }
-      #endif
     }
   }
 }
@@ -911,9 +579,6 @@ int
 kill(int pid)
 {
   struct proc *p;
-  #ifdef SCHED_FCFS
-  int add_to_ready_queue = 0;
-  #endif
 
   for(p = proc; p < &proc[NPROC]; p++){
     acquire(&p->lock);
@@ -922,17 +587,8 @@ kill(int pid)
       if(p->state == SLEEPING){
         // Wake process from sleep().
         p->state = RUNNABLE;
-        #ifdef SCHED_FCFS
-        add_to_ready_queue = 1;
-        #endif
       }
       release(&p->lock);
-      #ifdef SCHED_FCFS
-      if (add_to_ready_queue) {
-        insert_to_ready_queue(p, pid, "kill");
-      }
-      #endif
-
       return 0;
     }
     release(&p->lock);
@@ -998,60 +654,3 @@ procdump(void)
     printf("\n");
   }
 }
-
-int 
-trace(int mask, int pid){
-  struct proc *p;
-
-  p = find_proc(pid);
-  if(!p){
-    return -1;
-  }
-
-  acquire(&p->lock);
-  p->trace_mask = mask;
-  release(&p->lock);
-  return 0;
-}
-
-void
-update_pref_stats() {
-  struct proc *p;
-
-  for(p = proc; p < &proc[NPROC]; p++) {
-    acquire(&p->lock);
-    int *p_time_stat = 0;
-    switch (p->state)
-    {
-      case SLEEPING:
-        p_time_stat = &p->perf_stats.stime;
-        break;
-      case RUNNABLE:
-        p_time_stat = &p->perf_stats.retime;
-        break;
-      case RUNNING:
-        p_time_stat = &p->perf_stats.rutime;
-        break;
-      default:
-        break;
-    }
-    if (p_time_stat) {
-      *p_time_stat += 1;
-    }
-    release(&p->lock);
-  }
-}
-
-#ifdef SCHED_CFSD
-int
-set_priority(struct proc *p, int priority)
-{
-  if (!(0 <= priority && priority <= 4)) {
-    return -1;
-  }
-  acquire(&p->lock);
-  p->priority = priority;
-  release(&p->lock);
-  return 0;
-}
-#endif

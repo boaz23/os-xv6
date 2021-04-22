@@ -23,11 +23,6 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
-int trace(int, int);
-int wait_stat(int*, struct perf*);
-#ifdef SCHED_CFSD
-int set_priority(int);
-#endif
 
 // ulib.c
 int stat(const char*, struct stat*);

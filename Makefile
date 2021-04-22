@@ -28,9 +28,8 @@ OBJS = \
   $K/sysfile.o \
   $K/kernelvec.o \
   $K/plic.o \
-  $K/virtio_disk.o \
-  $K/proc_array_queue.o 
-  
+  $K/virtio_disk.o
+
 # riscv64-unknown-elf- or riscv64-linux-gnu-
 # perhaps in /opt/riscv/bin
 #TOOLPREFIX = 
@@ -70,26 +69,6 @@ CFLAGS += -fno-pie -no-pie
 endif
 ifneq ($(shell $(CC) -dumpspecs 2>/dev/null | grep -e '[^f]nopie'),)
 CFLAGS += -fno-pie -nopie
-endif
-
-ifndef SCHEDFLAG
-SCHEDFLAG = DEFAULT
-endif
-$(info $(SCHEDFLAG))
-ifeq ($(SCHEDFLAG), DEFAULT)
-CFLAGS += -DSCHED_DEFAULT
-else
-ifeq ($(SCHEDFLAG), FCFS)
-CFLAGS += -DSCHED_FCFS
-else
-ifeq ($(SCHEDFLAG), SRT)
-CFLAGS += -DSCHED_SRT
-else
-ifeq ($(SCHEDFLAG), CFSD)
-CFLAGS += -DSCHED_CFSD
-endif
-endif
-endif
 endif
 
 LDFLAGS = -z max-page-size=4096
@@ -153,11 +132,9 @@ UPROGS=\
 	$U/_grind\
 	$U/_wc\
 	$U/_zombie\
-	$U/_test\
-	$U/_cp\
 
-fs.img: mkfs/mkfs README $U/path $(UPROGS)
-	mkfs/mkfs fs.img README $U/path $(UPROGS)
+fs.img: mkfs/mkfs README $(UPROGS)
+	mkfs/mkfs fs.img README $(UPROGS)
 
 -include kernel/*.d user/*.d
 

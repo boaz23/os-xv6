@@ -104,111 +104,40 @@ extern uint64 sys_unlink(void);
 extern uint64 sys_wait(void);
 extern uint64 sys_write(void);
 extern uint64 sys_uptime(void);
-extern uint64 sys_trace(void);
-extern uint64 sys_wait_stat(void);
-#ifdef SCHED_CFSD
-extern uint64 sys_set_priority(void);
-#endif
-
 
 static uint64 (*syscalls[])(void) = {
-[SYS_fork]         sys_fork,
-[SYS_exit]         sys_exit,
-[SYS_wait]         sys_wait,
-[SYS_pipe]         sys_pipe,
-[SYS_read]         sys_read,
-[SYS_kill]         sys_kill,
-[SYS_exec]         sys_exec,
-[SYS_fstat]        sys_fstat,
-[SYS_chdir]        sys_chdir,
-[SYS_dup]          sys_dup,
-[SYS_getpid]       sys_getpid,
-[SYS_sbrk]         sys_sbrk,
-[SYS_sleep]        sys_sleep,
-[SYS_uptime]       sys_uptime,
-[SYS_open]         sys_open,
-[SYS_write]        sys_write,
-[SYS_mknod]        sys_mknod,
-[SYS_unlink]       sys_unlink,
-[SYS_link]         sys_link,
-[SYS_mkdir]        sys_mkdir,
-[SYS_close]        sys_close,
-[SYS_trace]        sys_trace,
-[SYS_wait_stat]    sys_wait_stat,
-#ifdef SCHED_CFSD
-[SYS_set_priority] sys_set_priority,
-#endif
-
+[SYS_fork]    sys_fork,
+[SYS_exit]    sys_exit,
+[SYS_wait]    sys_wait,
+[SYS_pipe]    sys_pipe,
+[SYS_read]    sys_read,
+[SYS_kill]    sys_kill,
+[SYS_exec]    sys_exec,
+[SYS_fstat]   sys_fstat,
+[SYS_chdir]   sys_chdir,
+[SYS_dup]     sys_dup,
+[SYS_getpid]  sys_getpid,
+[SYS_sbrk]    sys_sbrk,
+[SYS_sleep]   sys_sleep,
+[SYS_uptime]  sys_uptime,
+[SYS_open]    sys_open,
+[SYS_write]   sys_write,
+[SYS_mknod]   sys_mknod,
+[SYS_unlink]  sys_unlink,
+[SYS_link]    sys_link,
+[SYS_mkdir]   sys_mkdir,
+[SYS_close]   sys_close,
 };
-
-static char *syscalls_names[] = {
-[SYS_fork]         "fork",
-[SYS_exit]         "exit",
-[SYS_wait]         "wait",
-[SYS_pipe]         "pipe",
-[SYS_read]         "read",
-[SYS_kill]         "kill",
-[SYS_exec]         "exec",
-[SYS_fstat]        "fstat",
-[SYS_chdir]        "chdir",
-[SYS_dup]          "dup",
-[SYS_getpid]       "getpid",
-[SYS_sbrk]         "sbrk",
-[SYS_sleep]        "sleep",
-[SYS_uptime]       "uptime",
-[SYS_open]         "open",
-[SYS_write]        "write",
-[SYS_mknod]        "mknod",
-[SYS_unlink]       "unlink",
-[SYS_link]         "link",
-[SYS_mkdir]        "mkdir",
-[SYS_close]        "close",
-[SYS_trace]        "trace",
-[SYS_wait_stat]    "wait_stat",
-#ifdef SCHED_CFSD
-[SYS_set_priority] "set_priority",
-#endif
-
-};
-
-void print_trace(struct proc *p, int syscall_num, int arg0, uint64 return_value)
-{
-  int mask = 0;
-  int pid = 0;
-  char *syscall_name = 0;
-
-  acquire(&p->lock);
-  mask = p->trace_mask;
-  pid = p->pid;
-  release(&p->lock);
-
-  if((1 << syscall_num) & mask){
-    syscall_name = syscalls_names[syscall_num];
-    
-    if(syscall_num == SYS_fork){
-      printf("%d: syscall %s NULL -> %d\n", pid, syscall_name, return_value);
-    }
-    else if(syscall_num == SYS_kill || syscall_num == SYS_sbrk){
-      printf("%d: syscall %s %d -> %d\n", pid, syscall_name, arg0, (int)return_value);
-    }
-    else {
-      printf("%d: syscall %s  -> %d\n", pid, syscall_name, return_value);
-    }
-  }
-}
 
 void
 syscall(void)
 {
   int num;
-  int arg0 = 0;
   struct proc *p = myproc();
 
   num = p->trapframe->a7;
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
-    argint(0, &arg0);
     p->trapframe->a0 = syscalls[num]();
-    print_trace(p, num, arg0, p->trapframe->a0);
   } else {
     printf("%d %s: unknown sys call %d\n",
             p->pid, p->name, num);
