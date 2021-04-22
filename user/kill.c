@@ -12,6 +12,8 @@ main(int argc, char **argv)
   }
   int pid = atoi(argv[1]);
   int signum = atoi(argv[2]);
-  kill(pid, signum);
+  if (kill(pid, signum) < 0) {
+    printf("sending signal %d to process %d failed.\n");
+  }
   exit(0);
 }

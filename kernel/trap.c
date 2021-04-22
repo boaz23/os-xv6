@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "signal.h"
 
 struct spinlock tickslock;
 uint ticks;
@@ -83,6 +84,26 @@ usertrap(void)
   usertrapret();
 }
 
+void
+handle_proc_signals(struct proc *p)
+{
+  // TODO: should we lock here?
+  // TODO: should execute with interrupts off?
+
+  while (1) {
+    if (p->pending_signals & (1 << SIGCONT)) {
+      // always happens regardless if SIGCONT is ignored or not.
+      p->pending_signals &= ~(1 << SIGCONT);
+      p->freezed = 0;
+    }
+    if (!p->freezed) {
+      break;
+    }
+
+    yield();
+  }
+}
+
 //
 // return to user space
 //
@@ -90,6 +111,7 @@ void
 usertrapret(void)
 {
   struct proc *p = myproc();
+  handle_proc_signals(p);
 
   // we're about to switch the destination of traps from
   // kerneltrap() to usertrap(), so turn off interrupts until

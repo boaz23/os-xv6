@@ -123,6 +123,7 @@ found:
   p->pid = allocpid();
   p->state = USED;
 
+  p->freezed = 0;
   p->pending_signals = 0;
   p->signal_mask = 0;
   for(int i = 0; i < 32; i++){
@@ -175,6 +176,7 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  p->freezed = 0;
 }
 
 // Create a user page table for a given process,
@@ -609,12 +611,33 @@ kill(int pid, int signum)
       switch (signum)
       {
         case SIGKILL:
+          if (p->signal_handlers[SIGKILL] != SIG_DFL ||
+              p->signal_mask & (1 << SIGKILL) != 0 ||
+              p->signal_handles_mask[SIGKILL] != 0) {
+                panic("SIGKILL behavior changed by user.\n");
+          }
           if(p->state == SLEEPING){
             // Wake process from sleep().
             p->state = RUNNABLE;
           }
           p->killed = 1;
           break;
+        
+        case SIGSTOP:
+          if (p->signal_handlers[SIGSTOP] != SIG_DFL ||
+              p->signal_mask & (1 << SIGSTOP) != 0 ||
+              p->signal_handles_mask[SIGSTOP] != 0) {
+                panic("SIGSTOP behavior changed by user.\n");
+          }
+          p->freezed = 1;
+
+        case SIGCONT:
+          // ignore if not freezed
+          if (!p->freezed) {
+            break;
+          }
+          
+          // fallthrough
         
         default:
           // TODO: should we not set the if the signal is ignored

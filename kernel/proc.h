@@ -112,7 +112,10 @@ struct proc {
   void *signal_handlers[32];
   struct trapframe *backup_trapframe;
 
+  // controls whether the process was freezed by a SIGSTOP signal. let's handling SIGCONT know whether to yield or not.
+  int freezed;
+
   // TODO : Check if we need to lock the proccess when
   // we update the signals.
-  // update places code: fork, sigprocmask, exec, sigaction, kill
+  // update places code: fork, sigprocmask, exec, sigaction, kill, handle_proc_signals
 }; 
