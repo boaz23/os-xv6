@@ -95,3 +95,38 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64
+sys_sigprocmask(void){
+  uint sigmask;
+
+  if(argint(0, (int *)&sigmask) < 0)
+    return -1;
+
+  return sigprocmask(sigmask);
+}
+
+uint64
+sys_sigaction(void){
+  int signum;
+  uint64 act;
+  uint64 old_act;
+
+  if(argint(0, &signum) < 0)
+    return -1;
+  
+  if(argaddr(0, &act) < 0)
+    return -1;
+
+  if(argaddr(0, &old_act) < 0)
+    return -1;
+
+  return sigaction(signum, act, old_act);
+}
+
+
+uint64
+sys_sigret(void){
+  sigret();
+  return 0;
+}

@@ -120,6 +120,14 @@ found:
   p->pid = allocpid();
   p->state = USED;
 
+  p->pending_signals = 0;
+  p->signal_mask = 0;
+  for(int i = 0; i < 32; i++){
+    p->signal_handlers[i] = SIG_DFL; 
+    p->signal_handles_mask[i] = 0;
+  }
+  p->backup_trapframe = p->trapframe;
+
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     freeproc(p);
@@ -294,6 +302,13 @@ fork(void)
 
   // Cause fork to return 0 in the child.
   np->trapframe->a0 = 0;
+
+  // signal info
+  np->signal_mask = p->signal_mask;
+  for(int i = 0; i < 32; i++){
+    np->signal_handlers[i] = p->signal_handlers[i]; 
+    np->signal_handles_mask[i] = p->signal_handles_mask[i];
+  }
 
   // increment reference counts on open file descriptors.
   for(i = 0; i < NOFILE; i++)
@@ -654,3 +669,50 @@ procdump(void)
     printf("\n");
   }
 }
+
+uint
+sigprocmask(uint sigmask){
+  struct proc *p = myproc();
+  uint old_mask;
+
+  acquire(&p->lock);
+  old_mask = p->signal_mask;
+  p->signal_mask = sigmask & (~((1 << SIGKILL) | (1 << SIGSTOP)));
+  release(&p->lock);
+
+  return old_mask;
+}
+
+int sigaction(int signum, uint64 act_addr, uint64 old_act_addr){
+  struct proc *p = myproc();
+  struct sigaction old_act;
+  struct sigaction new_act;
+
+  if(!(signum == SIG_DFL || signum == SIG_IGN || signum == SIGCONT)){
+    return -1;
+  }
+
+  if(old_act_addr != 0){
+    old_act.sa_handler = p->signal_handlers[signum];
+    old_act.sigmask = p->signal_handles_mask[signum];
+    if(copyout(p->pagetable, old_act_addr, (char *)&old_act, sizeof(old_act)) < 0){
+      return -1;
+    }
+  }
+
+  if(act_addr != 0){
+    if(copyin(p->pagetable, (char *)&new_act, act_addr, sizeof(new_act)) < 0){
+      return -1;
+    }
+    p->signal_handlers[signum] = new_act.sa_handler;
+    p->signal_handles_mask[signum] = new_act.sigmask;
+  }
+
+  return 0;
+}
+
+void
+sigret(void){
+
+}
+
