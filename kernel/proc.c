@@ -28,6 +28,7 @@ extern char trampoline[]; // trampoline.S
 struct spinlock wait_lock;
 
 int is_valid_signum(int signum);
+int is_overridable_signum(int signum);
 
 // Allocate a page for each process's kernel stack.
 // Map it high in memory, followed by an invalid
@@ -612,8 +613,8 @@ kill(int pid, int signum)
       {
         case SIGKILL:
           if (p->signal_handlers[SIGKILL] != SIG_DFL ||
-              p->signal_mask & (1 << SIGKILL) != 0 ||
-              p->signal_handles_mask[SIGKILL] != 0) {
+              p->signal_mask & (1 << SIGKILL) ||
+              p->signal_handles_mask[SIGKILL]) {
                 panic("SIGKILL behavior changed by user.\n");
           }
           if(p->state == SLEEPING){
@@ -625,8 +626,8 @@ kill(int pid, int signum)
         
         case SIGSTOP:
           if (p->signal_handlers[SIGSTOP] != SIG_DFL ||
-              p->signal_mask & (1 << SIGSTOP) != 0 ||
-              p->signal_handles_mask[SIGSTOP] != 0) {
+              p->signal_mask & (1 << SIGSTOP) ||
+              p->signal_handles_mask[SIGSTOP]) {
                 panic("SIGSTOP behavior changed by user.\n");
           }
           p->freezed = 1;
@@ -730,7 +731,7 @@ int sigaction(int signum, uint64 act_addr, uint64 old_act_addr){
   struct sigaction old_act;
   struct sigaction new_act;
 
-  if(!is_valid_signum(signum)){
+  if(!is_overridable_signum(signum)){
     return -1;
   }
 
@@ -761,5 +762,11 @@ sigret(void){
 int
 is_valid_signum(int signum)
 {
-  return signum < 32 && signum != SIGKILL && signum != SIGSTOP;
+  return signum < 32;
+}
+
+int
+is_overridable_signum(int signum)
+{
+  return is_valid_signum(signum) && signum != SIGKILL && signum != SIGSTOP;
 }

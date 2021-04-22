@@ -91,6 +91,9 @@ handle_proc_signals(struct proc *p)
   // TODO: should execute with interrupts off?
 
   while (1) {
+    if (p->killed) {
+      exit(-1);
+    }
     if (p->pending_signals & (1 << SIGCONT)) {
       // always happens regardless if SIGCONT is ignored or not.
       p->pending_signals &= ~(1 << SIGCONT);
