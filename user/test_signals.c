@@ -3,8 +3,28 @@
 #include "user/user.h"
 #include "kernel/fcntl.h"
 
+
+void func(void) {
+  printf("func\n");
+}
+
 void signal_printer_cont(int sig) {
 	printf("custom SIGSTOP handler\n");
+}
+
+void test_sigret(){
+  struct sigaction sigact = {
+    &signal_printer_cont,
+    0
+  };
+
+  printf("func addr %d\n", &func);
+  ((void (*)(void))(0))(); 
+  printf("signal_printer_cont addr %d\n", &signal_printer_cont);
+  sigaction(3, &sigact, 0);
+  kill(getpid(), 3);
+  sleep(100);
+  printf("test_sigret is successful\n");
 }
 
 void test_sigkill() {
@@ -281,5 +301,6 @@ void test_sigcont_then_stop(char *s) {
 }
 
 void main(int argc, char *argv[]) {
-  
+  test_sigret();
+  exit(0);
 }

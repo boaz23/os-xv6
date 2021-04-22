@@ -131,7 +131,6 @@ found:
     p->signal_handlers[i] = SIG_DFL; 
     p->signal_handles_mask[i] = 0;
   }
-  p->backup_trapframe = p->trapframe;
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -139,6 +138,7 @@ found:
     release(&p->lock);
     return 0;
   }
+  p->backup_trapframe = p->trapframe + sizeof(struct trapframe);
 
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
@@ -166,6 +166,7 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
+  p->backup_trapframe = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
@@ -756,7 +757,8 @@ int sigaction(int signum, uint64 act_addr, uint64 old_act_addr){
 
 void
 sigret(void){
-  printf("in sig ret");
+  struct proc *p = myproc();
+  *p->trapframe = *p->backup_trapframe;
 }
 
 int
