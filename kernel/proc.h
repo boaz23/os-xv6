@@ -131,7 +131,7 @@ struct proc {
   // controls whether the process was freezed by a SIGSTOP signal. let's handling SIGCONT know whether to yield or not.
   int freezed;
 
-  // TODO : Check if we need to lock the proccess when
-  // we update the signals.
-  // update places code: fork, sigprocmask, exec, sigaction, kill, handle_proc_signals
+  // TODO: Check if we need to lock the proccess when we update the signals.
+  // usage places: allocproc, freeproc, fork, sigprocmask, sigaction, sigret, handle_proc_signals,
+  //               kill
 }; 
