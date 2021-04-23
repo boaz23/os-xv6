@@ -157,7 +157,7 @@ handle_proc_signals(struct proc *p)
     if(signal_handler == (void *)SIG_DFL){
       exit(-1);
     }
-    
+
     // from this point, assume userspace function
     // TODO: what about the rest of the kernel signals
 
@@ -174,7 +174,7 @@ handle_proc_signals(struct proc *p)
 
     // prepare for calling the handler
     p->trapframe->a0 = i;
-    p->trapframe->epc = (uint64)p->signal_handlers[i];
+    p->trapframe->epc = (uint64)signal_handler;
 
     // replace the signal mask
     p->signal_mask_backup = p->signal_mask;

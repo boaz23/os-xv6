@@ -106,14 +106,28 @@ struct proc {
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
 
+  // used in: allocproc, handle_proc_signals,
+  //          kill
+  // LOCK?
   uint pending_signals;
+
+  // used in: allocproc, fork, sigprocmask, sigret, handle_proc_signals,
+  //          kill* (just for checking panic scenario, should lock?)
   uint signal_mask;         // specifies the signals which are blocked for this process
+
+  // used in: sigret, handle_proc_signals,
   uint signal_mask_backup;  // used for restoring the original signal mask after a custom signal handler
 
+  // used in: allocproc, fork, sigaction, handle_proc_signals,
+  //          kill* (only for SIGKILL and SIGSTOP and no other code accesses these)
   uint signal_handles_mask[32];
   void *signal_handlers[32];
+
+  // used in: handle_proc_signals, allocproc, freeproc, sigret,
   struct trapframe *backup_trapframe;
 
+  // used in: kill, handle_proc_signals,
+  // LOCK?
   // controls whether the process was freezed by a SIGSTOP signal. let's handling SIGCONT know whether to yield or not.
   int freezed;
 
