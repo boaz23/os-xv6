@@ -20,7 +20,7 @@ struct context {
 
 // Per-CPU state.
 struct cpu {
-  struct proc *proc;          // The process running on this cpu, or null.
+  struct thread *thread;      // The thread running on this cpu, or null.
   struct context context;     // swtch() here to enter scheduler().
   int noff;                   // Depth of push_off() nesting.
   int intena;                 // Were interrupts enabled before push_off()?
@@ -80,10 +80,10 @@ struct trapframe {
   /* 280 */ uint64 t6;
 };
 
-enum thread_state { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING };
+enum thread_state { T_UNUSED, T_USED, T_SLEEPING, T_RUNNABLE, T_RUNNING };
 
 struct thread {
-  struct proc *p; // The process this threads belongs to
+  struct proc *process; // The process this threads belongs to
   struct spinlock lock;
 
   // lock must be held when using these:
@@ -104,13 +104,15 @@ struct thread {
   char name[16];                 // Thread name (debugging)
 };
 
-enum procstate { UNUSED, USED, SCHEDULABLE, ZOMBIE };
+enum procstate { P_UNUSED, P_USED, P_SCHEDULABLE, P_ZOMBIE };
 
 #define NTHREAD 8
 
 // Per-process state
 struct proc {
   struct spinlock lock;
+
+  int next_tid;
 
   // p->lock must be held when using these:
   enum procstate state;        // Process state
@@ -128,11 +130,13 @@ struct proc {
   // uint64 kstack;               // Virtual address of kernel stack
   uint64 sz;                   // Size of process memory (bytes)
   pagetable_t pagetable;       // User page table
-  struct trapframe *trapframe; // data page for trampoline.S
-  struct context context;      // swtch() here to run process
+  //struct trapframe *trapframe; // data page for trampoline.S
+  //struct context context;      // swtch() here to run process
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+
+  struct thread threads[NTHREAD];
 
   // used in: allocproc, handle_proc_signals,
   //          kill
