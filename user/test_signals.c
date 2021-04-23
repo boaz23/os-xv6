@@ -3,6 +3,11 @@
 #include "user/user.h"
 #include "kernel/fcntl.h"
 
+// TODO:
+//  Should tests be automatic or manual?
+//  Can't see how this can be automated in the user space.
+//  This has to have support from the kernel
+//  which in itself can invalidate the results.
 
 void func(void) {
   printf("func\n");

@@ -132,8 +132,7 @@ handle_proc_signals(struct proc *p)
     yield();
   }
 
-  // TODO: what if the signal is ignore and blocked
-  // TOOD: what we need to do with the sigmask of sigaction
+  // TODO: what if the signal is ignore and blocked (both at the same time)
   for(int i = 0; i < 32; i++){
     // pending?
     if(!((1 << i) & p->pending_signals)){
@@ -158,9 +157,9 @@ handle_proc_signals(struct proc *p)
     if(signal_handler == (void *)SIG_DFL){
       exit(-1);
     }
-
+    
+    // from this point, assume userspace function
     // TODO: what about the rest of the kernel signals
-    // from here, assume userspace function
 
     // back up the current trapframe
     *p->backup_trapframe = *p->trapframe;
