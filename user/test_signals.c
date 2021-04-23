@@ -18,12 +18,16 @@ void test_sigret(){
     0
   };
 
+  // NOTE: 0 is a valid address for functions.
+  //       In this code, &func == 0.
+  //       Also removing the following line will cause change of the
+  //       functions addresses (yes, the printing of &func).
   printf("func addr %d\n", &func);
-  ((void (*)(void))(0))(); 
+  // ((void (*)(void))(0))();
   printf("signal_printer_cont addr %d\n", &signal_printer_cont);
   sigaction(3, &sigact, 0);
   kill(getpid(), 3);
-  sleep(100);
+  sleep(50);
   printf("test_sigret is successful\n");
 }
 

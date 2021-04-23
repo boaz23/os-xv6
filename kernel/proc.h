@@ -107,7 +107,9 @@ struct proc {
   char name[16];               // Process name (debugging)
 
   uint pending_signals;
-  uint signal_mask;
+  uint signal_mask;         // specifies the signals which are blocked for this process
+  uint signal_mask_backup;  // used for restoring the original signal mask after a custom signal handler
+
   uint signal_handles_mask[32];
   void *signal_handlers[32];
   struct trapframe *backup_trapframe;

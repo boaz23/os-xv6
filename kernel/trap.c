@@ -108,6 +108,7 @@ handle_proc_signals(struct proc *p)
 {
   // TODO: should we lock here?
   // TODO: should execute with interrupts off?
+  // TODO: should we handle the logic of SIGKILL, SIGSTOP here or before returning to user space?
   // TODO: should we exit on killed or DFL handler (for non-special signals)?
   //       it is curious why a process which yields in 'usertrap' then gets
   //       killed (SIGKILL), will be allowed to get to 'usertrapret' instead of
@@ -134,18 +135,23 @@ handle_proc_signals(struct proc *p)
   // TODO: what if the signal is ignore and blocked
   // TOOD: what we need to do with the sigmask of sigaction
   for(int i = 0; i < 32; i++){
+    // pending?
     if(!((1 << i) & p->pending_signals)){
       continue;
     }
 
+    // blocked?
     if((1 << i) & p->signal_mask){
       continue;
     }
 
     signal_handler = p->signal_handlers[i];
 
+    // unset the signal
+    p->pending_signals &= ~(1 << i);
+
+    // ignored?
     if(signal_handler == (void *)SIG_IGN){
-      p->pending_signals &= ~(1 << i);
       continue;
     }
 
@@ -154,16 +160,26 @@ handle_proc_signals(struct proc *p)
     }
 
     // TODO: what about the rest of the kernel signals
+    // from here, assume userspace function
 
-    // assume userspace function
+    // back up the current trapframe
     *p->backup_trapframe = *p->trapframe;
+
+    // inject a call to 'sigret' system call
     saved_sp = p->trapframe->sp;
     copyout(p->pagetable, saved_sp, sigret_call, 8);
-    p->trapframe->sp = p->trapframe->sp - 8;
     p->trapframe->ra = saved_sp;
+
+    // fix the user's stack point (skip the injected call)
+    p->trapframe->sp = saved_sp - 8;
+
+    // prepare for calling the handler
     p->trapframe->a0 = i;
     p->trapframe->epc = (uint64)p->signal_handlers[i];
-    p->pending_signals &= ~(1 << i);
+
+    // replace the signal mask
+    p->signal_mask_backup = p->signal_mask;
+    p->signal_mask = p->signal_handles_mask[i];
 
     // See the note above the function for why we break
     // and not continue searching for more signals.

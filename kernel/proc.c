@@ -720,6 +720,10 @@ sigprocmask(uint sigmask){
   uint old_mask;
 
   acquire(&p->lock);
+  // TODO: what should happen in the case where this is called during
+  // a custom handler?
+  // Right now, this value is only changed temporarily until the
+  // custom handler ends.
   old_mask = p->signal_mask;
   p->signal_mask = sigmask & (~((1 << SIGKILL) | (1 << SIGSTOP)));
   release(&p->lock);
@@ -759,6 +763,7 @@ void
 sigret(void){
   struct proc *p = myproc();
   *p->trapframe = *p->backup_trapframe;
+  p->signal_mask = p->signal_mask_backup;
 }
 
 int
