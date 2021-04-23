@@ -2,39 +2,6 @@
 #include "user/user.h"
 #include "kernel/fcntl.h"
 
-// TODO:
-//  Should tests be automatic or manual?
-//  Can't see how this can be automated in the user space.
-//  This has to have support from the kernel
-//  which in itself can invalidate the results.
-
-void func(void) {
-  printf("func\n");
-}
-
-void signal_printer_cont(int sig) {
-	printf("custom SIGSTOP handler\n");
-}
-
-void test_sigret(){
-  struct sigaction sigact = {
-    &signal_printer_cont,
-    0
-  };
-
-  // NOTE: 0 is a valid address for functions.
-  //       In this code, &func == 0.
-  //       Also removing the following line will cause change of the
-  //       functions addresses (yes, the printing of &func).
-  printf("func addr %d\n", &func);
-  // ((void (*)(void))(0))();
-  printf("signal_printer_cont addr %d\n", &signal_printer_cont);
-  sigaction(3, &sigact, 0);
-  kill(getpid(), 3);
-  sleep(50);
-  printf("test_sigret is successful\n");
-}
-
 void test_sigkill() {
   int pid_child = fork();
   if (pid_child < 0) {
