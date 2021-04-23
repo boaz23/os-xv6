@@ -84,13 +84,34 @@ usertrap(void)
   usertrapret();
 }
 
+// The code which is injected to the user space.
+// In RISC-V assembly:
+// ```
+//   li a7, 24
+//   ecall
+// ```
+// where SYS_sigret is 24.
+// The 24 is hardcoded.
+// Thus, changing the SYS_sigret macro to another number,
+// requires also changing it here.
+
+// TODO: possibly write it in assembly and copy from there.
 static char sigret_call[] = {0x93 ,0x08 ,0x80 ,0x01 ,0x73 ,0x00 ,0x00 ,0x00};
 
+// Handles the normals signals and SIGCONT.
+// Causes execution of at most 1 custom user signal handler
+// since the first one to execute will execute a 'sigret' system call.
+// So, it will get to 'usertrap' to handle the system call,
+// which calls this function indirectly again.
 void
 handle_proc_signals(struct proc *p)
 {
   // TODO: should we lock here?
   // TODO: should execute with interrupts off?
+  // TODO: should we exit on killed or DFL handler (for non-special signals)?
+  //       it is curious why a process which yields in 'usertrap' then gets
+  //       killed (SIGKILL), will be allowed to get to 'usertrapret' instead of
+  //       forcing 'exit' on it.
   void *signal_handler;
   uint64 saved_sp;
 
@@ -143,6 +164,9 @@ handle_proc_signals(struct proc *p)
     p->trapframe->a0 = i;
     p->trapframe->epc = (uint64)p->signal_handlers[i];
     p->pending_signals &= ~(1 << i);
+
+    // See the note above the function for why we break
+    // and not continue searching for more signals.
     break;
   }
 }
