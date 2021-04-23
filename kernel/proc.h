@@ -80,7 +80,33 @@ struct trapframe {
   /* 280 */ uint64 t6;
 };
 
-enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
+enum thread_state { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING };
+
+struct thread {
+  struct proc *p; // The process this threads belongs to
+  struct spinlock lock;
+
+  // lock must be held when using these:
+  enum thread_state state;     // Thread state
+  void *chan;                  // If non-zero, sleeping on chan
+  int killed;                  // If non-zero, have been killed
+  int xstate;                  // Exit status (return on join)
+  int tid;                     // Thread ID
+
+  // lock
+  uint64 kstack;                 // Virtual address of kernel stack
+  // uint64 sz;                  // Per process
+  // pagetable_t pagetable;      // Per process
+  struct trapframe *trapframe;   // data page for trampoline.S
+  struct context context;        // swtch() here to run process
+  // struct file *ofile[NOFILE]; // Per process
+  // struct inode *cwd;          // Current directory
+  char name[16];                 // Thread name (debugging)
+};
+
+enum procstate { UNUSED, USED, SCHEDULABLE, ZOMBIE };
+
+#define NTHREAD 8
 
 // Per-process state
 struct proc {
@@ -88,7 +114,9 @@ struct proc {
 
   // p->lock must be held when using these:
   enum procstate state;        // Process state
-  void *chan;                  // If non-zero, sleeping on chan
+  // void *chan;               // REMOVED, If non-zero, sleeping on chan
+                               // Only threads can sleep on something since a process doesn't execute anything,
+                               // it's the collection of it's threads.
   int killed;                  // If non-zero, have been killed
   int xstate;                  // Exit status to be returned to parent's wait
   int pid;                     // Process ID
@@ -97,7 +125,7 @@ struct proc {
   struct proc *parent;         // Parent process
 
   // these are private to the process, so p->lock need not be held.
-  uint64 kstack;               // Virtual address of kernel stack
+  // uint64 kstack;               // Virtual address of kernel stack
   uint64 sz;                   // Size of process memory (bytes)
   pagetable_t pagetable;       // User page table
   struct trapframe *trapframe; // data page for trampoline.S
