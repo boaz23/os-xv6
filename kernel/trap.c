@@ -11,6 +11,7 @@ struct spinlock tickslock;
 uint ticks;
 
 extern char trampoline[], uservec[], userret[];
+#define TRAMP_ADDR(l) (TRAMPOLINE + ((l) - trampoline))
 
 // in kernelvec.S, calls kerneltrap().
 void kernelvec();
@@ -84,19 +85,10 @@ usertrap(void)
   usertrapret();
 }
 
-// The code which is injected to the user space.
-// In RISC-V assembly:
-// ```
-//   li a7, 24
-//   ecall
-// ```
-// where SYS_sigret is 24.
-// The 24 is hardcoded.
-// Thus, changing the SYS_sigret macro to another number,
-// requires also changing it here.
-
-// TODO: possibly write it in assembly and copy from there.
-static char sigret_call[] = {0x93 ,0x08 ,0x80 ,0x01 ,0x73 ,0x00 ,0x00 ,0x00};
+// The labels which points to the start and end of
+// the code injected to the user space (for signal handling).
+// The code itself is in trampoline.S.
+extern char call_syscall_sigret[], call_syscall_sigret_end[];
 
 // Handles the normals signals and SIGCONT.
 // Causes execution of at most 1 custom user signal handler
@@ -166,11 +158,13 @@ handle_proc_signals(struct proc *p)
 
     // inject a call to 'sigret' system call
     saved_sp = p->trapframe->sp;
-    copyout(p->pagetable, saved_sp, sigret_call, 8);
+    // copyout(p->pagetable, saved_sp, sigret_call, 8);
+    // why memmove??
+    copyout(p->pagetable, saved_sp, (char*)TRAMP_ADDR(call_syscall_sigret), TRAMP_ADDR(call_syscall_sigret_end) - TRAMP_ADDR(call_syscall_sigret));
     p->trapframe->ra = saved_sp;
 
     // fix the user's stack point (skip the injected call)
-    p->trapframe->sp = saved_sp - 8;
+    p->trapframe->sp = saved_sp - (TRAMP_ADDR(call_syscall_sigret_end) - TRAMP_ADDR(call_syscall_sigret));
 
     // prepare for calling the handler
     p->trapframe->a0 = i;
