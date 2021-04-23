@@ -80,6 +80,19 @@ struct trapframe {
   /* 280 */ uint64 t6;
 };
 
+// TODO: threads transition change might be needed in files:
+// bullets which starts in "--" indicate a high chance
+// that there is no need for any change.
+//   * console.c
+//   * exec.c
+//   * -- file.c
+//   * pipe.c
+//   * proc.c
+//   * ?? sleeplock.c
+//   * syscall.c
+//   * sysproc.c
+//   * trap.c
+
 enum thread_state { T_UNUSED, T_USED, T_SLEEPING, T_RUNNABLE, T_RUNNING };
 
 struct thread {
@@ -93,15 +106,22 @@ struct thread {
   int xstate;                  // Exit status (return on join)
   int tid;                     // Thread ID
 
-  // lock
   uint64 kstack;                 // Virtual address of kernel stack
-  // uint64 sz;                  // Per process
-  // pagetable_t pagetable;      // Per process
   struct trapframe *trapframe;   // data page for trampoline.S
   struct context context;        // swtch() here to run process
-  // struct file *ofile[NOFILE]; // Per process
-  // struct inode *cwd;          // Current directory
   char name[16];                 // Thread name (debugging)
+
+  // TODO: signals and multi-threading
+
+  // The following fields were not transfered because
+  // they are part of the shared state of all the threads
+  // of this process.
+  
+  // Not transfered fields:
+  //   -- uint64 sz;                  // Size of process memory (bytes)
+  //   -- pagetable_t pagetable;      // User page table
+  //   -- struct file *ofile[NOFILE]; // Open files
+  //   -- struct inode *cwd;          // Current directory
 };
 
 enum procstate { P_UNUSED, P_USED, P_SCHEDULABLE, P_ZOMBIE };
@@ -114,11 +134,14 @@ struct proc {
 
   int next_tid;
 
-  // p->lock must be held when using these:
+  // lock must be held when using these:
   enum procstate state;        // Process state
-  // void *chan;               // REMOVED, If non-zero, sleeping on chan
                                // Only threads can sleep on something since a process doesn't execute anything,
                                // it's the collection of it's threads.
+  // TODO: Collapse state
+  //   Change to 'collapse_state' which is an enum
+  //   stating why the process is collapsing.
+  //   For now, either because it is killed or one thread is executing a exec
   int killed;                  // If non-zero, have been killed
   int xstate;                  // Exit status to be returned to parent's wait
   int pid;                     // Process ID
@@ -126,12 +149,14 @@ struct proc {
   // proc_tree_lock must be held when using this:
   struct proc *parent;         // Parent process
 
-  // these are private to the process, so p->lock need not be held.
-  // uint64 kstack;               // Virtual address of kernel stack
+
+  // TODO: look for all the places where we might need to use
+  // synchronization now because of multiple threads of the same processes
+  // accessing a shared process resource.
+  // For example 'growproc' in proc.c
+  // ?? these are private to the process, so p->lock need not be held. ??
   uint64 sz;                   // Size of process memory (bytes)
   pagetable_t pagetable;       // User page table
-  //struct trapframe *trapframe; // data page for trampoline.S
-  //struct context context;      // swtch() here to run process
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
@@ -166,4 +191,15 @@ struct proc {
   // TODO: Check if we need to lock the proccess when we update the signals.
   // usage places: allocproc, freeproc, fork, sigprocmask, sigaction, sigret, handle_proc_signals,
   //               kill
+
+  // The following fields have been removed because these
+  // are only relavent for a task that can execute code.
+  // A process is a collection of threads with shared state,
+  // but cannot execute code on it's own.
+
+  // Removed fields:
+  //   -- void   *chan;                // If non-zero, sleeping on chan
+  //   -- uint64 kstack;               // Virtual address of kernel stack
+  //   -- struct trapframe *trapframe; // data page for trampoline.S
+  //   -- struct context context;      // swtch() here to run process
 }; 
