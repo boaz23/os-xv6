@@ -11,7 +11,6 @@
 #include "kernel/syscall.h"
 #include "kernel/memlayout.h"
 #include "kernel/riscv.h"
-#include "kernel/signal.h"
 
 // from FreeBSD.
 int

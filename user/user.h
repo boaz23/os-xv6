@@ -1,3 +1,5 @@
+#include "kernel/signal.h"
+
 struct stat;
 struct rtcdate;
 
