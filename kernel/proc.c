@@ -181,7 +181,7 @@ found:
   p->freezed = 0;
   p->pending_signals = 0;
   p->signal_mask = 0;
-  for(int i = 0; i < 32; i++){
+  for(int i = 0; i < MAX_SIG; i++){
     p->signal_handlers[i] = SIG_DFL; 
     p->signal_handles_mask[i] = 0;
   }
@@ -229,6 +229,7 @@ freeproc(struct proc *p)
   p->xstate = 0;
   p->state = P_UNUSED;
   p->freezed = 0;
+  p->next_tid = 0;
 }
 
 // Create a user page table for a given process,
@@ -370,7 +371,7 @@ fork(void)
 
   // signal info
   np->signal_mask = p->signal_mask;
-  for(int i = 0; i < 32; i++){
+  for(int i = 0; i < MAX_SIG; i++){
     np->signal_handlers[i] = p->signal_handlers[i]; 
     np->signal_handles_mask[i] = p->signal_handles_mask[i];
   }
@@ -695,14 +696,14 @@ wakeup(void *chan)
 
   for(p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock);
-    t = &p->threads[0];
-    if(t != mythread()){
-      acquire(&t->lock);
-      if(t->state == T_SLEEPING && t->chan == chan){
-        t->state = T_RUNNABLE;
+      t = &p->threads[0];
+      if(t != mythread()){
+        acquire(&t->lock);
+        if(t->state == T_SLEEPING && t->chan == chan){
+          t->state = T_RUNNABLE;
+        }
+        release(&t->lock);
       }
-      release(&t->lock);
-    }
     release(&p->lock);
   }
 }
@@ -871,7 +872,7 @@ sigret(void){
 int
 is_valid_signum(int signum)
 {
-  return signum >= 0 && signum < 32;
+  return signum >= 0 && signum < MAX_SIG;
 }
 
 int

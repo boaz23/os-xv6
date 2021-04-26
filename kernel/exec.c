@@ -26,7 +26,7 @@ exec(char *path, char **argv)
   struct proc *p = myproc();
 
   begin_op();
-
+  
   if((ip = namei(path)) == 0){
     end_op();
     return -1;
@@ -122,7 +122,7 @@ exec(char *path, char **argv)
   proc_freepagetable(oldpagetable, oldsz);
 
   // clear custom signals
-  for(int i = 0; i < 32; i++){
+  for(int i = 0; i < MAX_SIG; i++){
     if(p->signal_handlers[i] != (void *)SIG_DFL &&  p->signal_handlers[i] != (void *)SIG_IGN){
       p->signal_handlers[i] = (void *)SIG_DFL;
     }

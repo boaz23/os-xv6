@@ -1,3 +1,5 @@
+#include "signal.h"
+
 // Saved registers for kernel context switches.
 struct context {
   uint64 ra;
@@ -167,8 +169,8 @@ struct proc {
   uint pending_signals;
   uint signal_mask;         // specifies the signals which are blocked for this process
   uint signal_mask_backup;  // used for restoring the original signal mask after a custom signal handler
-  void *signal_handlers[32];
-  uint signal_handles_mask[32];
+  void *signal_handlers[MAX_SIG];
+  uint signal_handles_mask[MAX_SIG];
   struct trapframe *backup_trapframe;
 
   // controls whether the process was freezed by a SIGSTOP signal. let's handling SIGCONT know whether to yield or not.
