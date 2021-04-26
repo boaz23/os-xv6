@@ -90,94 +90,78 @@ usertrap(void)
 // The code itself is in trampoline.S.
 extern char call_syscall_sigret[], call_syscall_sigret_end[];
 
-// Handles the normals signals and SIGCONT.
 // Causes execution of at most 1 custom user signal handler
 // since the first one to execute will execute a 'sigret' system call.
 // So, it will get to 'usertrap' to handle the system call,
 // which calls this function indirectly again.
 void
-handle_proc_signals(struct proc *p)
+prepare_call_custom_user_signal_handler(struct thread *t, struct sigaction *user_action, int signum)
 {
-  // TODO: should we lock here?
-  // TODO: should execute with interrupts off?
-  // TODO: should we handle the logic of SIGKILL, SIGSTOP here or before returning to user space?
-  // TODO: should we exit on killed or DFL handler (for non-special signals)?
-  //       it is curious why a process which yields in 'usertrap' then gets
-  //       killed (SIGKILL), will be allowed to get to 'usertrapret' instead of
-  //       forcing 'exit' on it.
-  void *signal_handler;
+  struct proc *p = t->process;
   uint64 saved_sp;
 
-  while (1) {
-    if (p->killed) {
-      exit(-1);
-    }
-    if (p->pending_signals & (1 << SIGCONT)) {
-      // always happens regardless if SIGCONT is ignored or not.
-      p->pending_signals &= ~(1 << SIGCONT);
-      p->freezed = 0;
-    }
-    if (!p->freezed) {
-      break;
-    }
+  // back up the current trapframe
+  *p->backup_trapframe = *p->trapframe;
 
-    yield();
+  // fix the user's stack pointer (so injecting will not overwrite anything)
+  saved_sp = p->trapframe->sp - (TRAMP_ADDR(call_syscall_sigret_end) - TRAMP_ADDR(call_syscall_sigret));
+  p->trapframe->sp = saved_sp;
+
+  // inject a call to 'sigret' system call
+  copyout(p->pagetable, saved_sp, (char*)TRAMP_ADDR(call_syscall_sigret), TRAMP_ADDR(call_syscall_sigret_end) - TRAMP_ADDR(call_syscall_sigret));
+
+  // set the return address to the injected call
+  p->trapframe->ra = saved_sp;
+
+  // prepare for calling the handler
+  p->trapframe->a0 = signum;
+  p->trapframe->epc = (uint64)user_action->sa_handler;
+
+  // replace the signal mask
+  p->signal_mask_backup = p->signal_mask;
+  p->signal_mask = user_action->sigmask;
+
+  // unset the signal
+  p->pending_signals &= ~(1 << signum);
+
+  // mark that the process is running a custom user signal handler
+  p->in_custom_handler = 1;
+}
+
+void
+handle_proc_signals_core(struct thread *t)
+{
+  int found_custom_handler;
+  int user_action_signum;
+  struct sigaction user_action;
+  struct proc *p = t->process;
+
+  proc_handle_special_signals(p);
+  if (t->killed) {
+    // preserve old behavior: if t is killed, then let it continue
+    // for a bit until we get to usertrap
+    return;
   }
 
-  // TODO: what if the signal is ignore and blocked (both at the same time)
-  for(int i = 0; i < 32; i++){
-    // pending?
-    if(!((1 << i) & p->pending_signals)){
-      continue;
+  if (!p->in_custom_handler) {
+    found_custom_handler = proc_find_custom_signal_handler(p, &user_action, &user_action_signum);
+    if (found_custom_handler) {
+      prepare_call_custom_user_signal_handler(t, &user_action, user_action_signum);
     }
-
-    // blocked?
-    if((1 << i) & p->signal_mask){
-      continue;
-    }
-
-    signal_handler = p->signal_handlers[i];
-
-    // unset the signal
-    p->pending_signals &= ~(1 << i);
-
-    // ignored?
-    if(signal_handler == (void *)SIG_IGN){
-      continue;
-    }
-
-    if(signal_handler == (void *)SIG_DFL){
-      exit(-1);
-    }
-
-    // from this point, assume userspace function
-    // TODO: what about the rest of the kernel signals
-
-    // back up the current trapframe
-    *p->backup_trapframe = *p->trapframe;
-
-    // inject a call to 'sigret' system call
-    saved_sp = p->trapframe->sp;
-    // copyout(p->pagetable, saved_sp, sigret_call, 8);
-    // why memmove??
-    copyout(p->pagetable, saved_sp, (char*)TRAMP_ADDR(call_syscall_sigret), TRAMP_ADDR(call_syscall_sigret_end) - TRAMP_ADDR(call_syscall_sigret));
-    p->trapframe->ra = saved_sp;
-
-    // fix the user's stack point (skip the injected call)
-    p->trapframe->sp = saved_sp - (TRAMP_ADDR(call_syscall_sigret_end) - TRAMP_ADDR(call_syscall_sigret));
-
-    // prepare for calling the handler
-    p->trapframe->a0 = i;
-    p->trapframe->epc = (uint64)signal_handler;
-
-    // replace the signal mask
-    p->signal_mask_backup = p->signal_mask;
-    p->signal_mask = p->signal_handles_mask[i];
-
-    // See the note above the function for why we break
-    // and not continue searching for more signals.
-    break;
   }
+}
+
+void
+handle_proc_signals(struct thread *t)
+{
+  struct proc *p = t->process;
+  acquire(&p->lock);
+  acquire(&t->lock);
+
+  handle_proc_signals_core(t);
+
+  release(&t->lock);
+  release(&p->lock);
 }
 
 //
@@ -186,8 +170,10 @@ handle_proc_signals(struct proc *p)
 void
 usertrapret(void)
 {
-  struct proc *p = myproc();
-  handle_proc_signals(p);
+  struct thread *t = mythread();
+  struct proc *p = t->process;
+
+  handle_proc_signals(t);
 
   // we're about to switch the destination of traps from
   // kerneltrap() to usertrap(), so turn off interrupts until

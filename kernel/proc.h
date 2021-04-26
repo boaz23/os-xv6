@@ -162,36 +162,22 @@ struct proc {
   char name[16];               // Process name (debugging)
 
   struct thread threads[NTHREAD];
-
-  // used in: allocproc, handle_proc_signals,
-  //          kill
-  // LOCK?
+  
   uint pending_signals;
-
-  // used in: allocproc, fork, sigprocmask, sigret, handle_proc_signals,
-  //          kill* (just for checking panic scenario, should lock?)
   uint signal_mask;         // specifies the signals which are blocked for this process
-
-  // used in: sigret, handle_proc_signals,
   uint signal_mask_backup;  // used for restoring the original signal mask after a custom signal handler
-
-  // used in: allocproc, fork, sigaction, handle_proc_signals,
-  //          kill* (only for SIGKILL and SIGSTOP and no other code accesses these)
-  uint signal_handles_mask[32];
   void *signal_handlers[32];
-
-  // used in: handle_proc_signals, allocproc, freeproc, sigret,
+  uint signal_handles_mask[32];
   struct trapframe *backup_trapframe;
 
-  // used in: kill, handle_proc_signals,
-  // LOCK?
   // controls whether the process was freezed by a SIGSTOP signal. let's handling SIGCONT know whether to yield or not.
   int freezed;
+  
+  int in_custom_handler; // determines whether the process is in the middle of executing a custom signal handler
 
-  // TODO: Check if we need to lock the proccess when we update the signals.
-  // usage places: allocproc, freeproc, fork, sigprocmask, sigaction, sigret, handle_proc_signals,
-  //               kill
+  // SIGNAL: modification places: allocproc, freeproc, fork, sigprocmask, sigaction, sigret, handle_proc_signals, kill
 
+  // THREADS:
   // The following fields have been removed because these
   // are only relavent for a task that can execute code.
   // A process is a collection of threads with shared state,

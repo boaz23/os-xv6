@@ -10,3 +10,5 @@
 // see https://www.gnu.org/software/libc/manual/html_node/Job-Control-Signals.html
 // for further details.
 #define SIGCONT 19
+
+#define MAX_SIG 32

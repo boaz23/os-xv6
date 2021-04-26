@@ -591,14 +591,21 @@ sched(void) // *tc*
 void
 yield(void) // *tc*
 {
-  struct proc *p = myproc();
   struct thread *t = mythread();
+  struct proc *p = t->process;
   acquire(&p->lock);
   acquire(&t->lock);
   t->state = T_RUNNABLE; 
   sched();
   release(&t->lock);
   release(&p->lock);
+}
+
+void
+yield_no_locks(struct thread *t)
+{
+  t->state = T_RUNNABLE;
+  sched();
 }
 
 // A fork child's very first scheduling by scheduler()
@@ -694,50 +701,8 @@ kill(int pid, int signum)
 
   for(p = proc; p < &proc[NPROC]; p++){
     acquire(&p->lock);
-    if(p->pid == pid){
-      // *tc*
-      t = &p->threads[0];
-      acquire(&t->lock);
-      // TODO: should we handle the logic of SIGKILL, SIGSTOP here or before returning to user space?
-      switch (signum)
-      {
-        case SIGKILL:
-          if (p->signal_handlers[SIGKILL] != SIG_DFL ||
-              p->signal_mask & (1 << SIGKILL) ||
-              p->signal_handles_mask[SIGKILL]) {
-                panic("SIGKILL behavior changed by user.\n");
-          }
-          if(t->state == T_SLEEPING){
-            // Wake process from sleep().
-            t->state = T_RUNNABLE;
-          }
-          t->killed = 1;
-          p->killed = 1;
-          break;
-        
-        case SIGSTOP:
-          if (p->signal_handlers[SIGSTOP] != SIG_DFL ||
-              p->signal_mask & (1 << SIGSTOP) ||
-              p->signal_handles_mask[SIGSTOP]) {
-                panic("SIGSTOP behavior changed by user.\n");
-          }
-          p->freezed = 1;
-
-        case SIGCONT:
-          // ignore if not freezed
-          if (!p->freezed) {
-            break;
-          }
-          
-          // fallthrough
-        
-        default:
-          // TODO: should we not set the if the signal is ignored
-          // or ignore it before returning to user space?
-          p->pending_signals |= 1 << signum;
-          break;
-      }
-      release(&t->lock);
+    if(p->pid == pid) {
+      p->pending_signals |= 1 << signum;
       release(&p->lock);
       return 0;
     }
@@ -815,6 +780,8 @@ sigprocmask(uint sigmask){
   // Right now, this value is only changed temporarily until the
   // custom handler ends.
   old_mask = p->signal_mask;
+
+  // do not block SIGKILL and SIGSTOP
   p->signal_mask = sigmask & (~((1 << SIGKILL) | (1 << SIGSTOP)));
   release(&p->lock);
 
@@ -830,40 +797,208 @@ int sigaction(int signum, uint64 act_addr, uint64 old_act_addr){
     return -1;
   }
 
+  acquire(&p->lock);
+
   if(old_act_addr != 0){
     old_act.sa_handler = p->signal_handlers[signum];
     old_act.sigmask = p->signal_handles_mask[signum];
-    if(copyout(p->pagetable, old_act_addr, (char *)&old_act, sizeof(old_act)) < 0){
+    if(copyout(p->pagetable, old_act_addr, (char *)&old_act, sizeof(old_act)) < 0) {
+      release(&p->lock);
       return -1;
     }
   }
 
   if(act_addr != 0){
-    if(copyin(p->pagetable, (char *)&new_act, act_addr, sizeof(new_act)) < 0){
+    if(copyin(p->pagetable, (char *)&new_act, act_addr, sizeof(new_act)) < 0) {
+      release(&p->lock);
       return -1;
     }
     p->signal_handlers[signum] = new_act.sa_handler;
     p->signal_handles_mask[signum] = new_act.sigmask;
   }
 
+  release(&p->lock);
   return 0;
 }
 
 void
 sigret(void){ // *tc*
   struct thread *t = mythread();
-  *t->trapframe = *t->process->backup_trapframe;
-  t->process->signal_mask = t->process->signal_mask_backup;
+  struct proc *p = t->process;
+
+  acquire(&p->lock);
+  acquire(&t->lock);
+
+  *t->trapframe = *p->backup_trapframe;
+  p->signal_mask = p->signal_mask_backup;
+  p->in_custom_handler = 0;
+
+  release(&t->lock);
+  release(&p->lock);
 }
 
 int
 is_valid_signum(int signum)
 {
-  return signum < 32;
+  return signum >= 0 && signum < 32;
 }
 
 int
 is_overridable_signum(int signum)
 {
   return is_valid_signum(signum) && signum != SIGKILL && signum != SIGSTOP;
+}
+
+void check_not_overriden(struct proc *p, int signum, char *sig_name)
+{
+  if (p->signal_handlers[signum] != SIG_DFL ||
+      p->signal_mask & (1 << signum) ||
+      p->signal_handles_mask[signum]) {
+    printf("%s ", sig_name);
+    panic("behavior changed by user.\n");
+  }
+}
+
+// #define PRINT_KR_SIGS
+
+// TODO: what if the signal is ignore and blocked (both at the same time)?
+//       meanwhile, ignore overtakes blocked.
+// TODO: how to handle SIGCONT in the following cases (or any valid combination of them):
+//   * ignored
+//   * blocked
+//   * custom handler
+// Caller should hold the process' lock
+void
+proc_handle_special_signals(struct thread *t)
+{
+  int continued;
+  #ifdef PRINT_KR_SIGS
+  int prev_freezed;
+  #endif
+  void *handler;
+  struct proc *p = t->process;
+
+  while (1) {
+    continued = 0;
+    #ifdef PRINT_KR_SIGS
+    prev_freezed = p->freezed;
+    #endif
+
+    for (int signum = 0; signum < MAX_SIG; ++signum) {
+      // pending?
+      if(!(p->pending_signals & (1 << signum))){
+        continue;
+      }
+
+      if (signum == SIGKILL) {
+        check_not_overriden(p, SIGKILL, "SIGKILL");
+        p->pending_signals &= ~(1 << signum);
+        p->killed = 1;
+      }
+      else if (signum == SIGSTOP) {
+        check_not_overriden(p, SIGSTOP, "SIGSTOP");
+        p->pending_signals &= ~(1 << signum);
+        p->freezed = 1;
+      }
+      else {
+        handler = p->signal_handlers[signum];
+
+        // ignored?
+        if(handler == (void *)SIG_IGN){
+          p->pending_signals &= ~(1 << signum);
+          continue;
+        }
+
+        // blocked?
+        if(p->signal_mask & (1 << signum)){
+          continue;
+        }
+
+        if ((signum == SIGCONT && handler == (void *)SIG_DFL) || handler == (void *)SIGCONT) {
+          continued = 1;
+        }
+        else if (handler == (void *)SIGKILL || (signum != SIGCONT && handler == (void *)SIG_DFL)) {
+          p->killed = 1;
+        }
+        else if (handler == (void *)SIGSTOP) {
+          p->freezed = 1;
+        }
+        else {
+          // custom user handler
+          // do not unset the signal
+          continue;
+        }
+        p->pending_signals &= ~(1 << signum);
+      }
+    }
+
+    if (p->killed) {
+      #ifdef PRINT_KR_SIGS
+      printf("%d killed\n", p->pid);
+      #endif
+
+      acquire(&t->lock);
+      t->killed = 1;
+      release(&t->lock);
+
+      // no other special signal matters.
+      // see the note in trap.c on why not exit.
+      return;
+    }
+    else if (p->freezed) {
+      if (continued) {
+        #ifdef PRINT_KR_SIGS
+        if (prev_freezed) {
+          printf("%d continued\n", p->pid);
+        }
+        #endif
+
+        p->freezed = 0;
+        return;
+      }
+      
+      #ifdef PRINT_KR_SIGS
+      if (!prev_freezed) {
+        printf("%d stopped\n", p->pid);
+      }
+      #endif
+
+      // yield back to scheduler until continued.
+      yield_no_locks(t);
+    }
+    else if (continued) {
+      // just continued, nothing to do
+      return;
+    }
+    else {
+      // nothing to do
+      return;
+    }
+  }
+}
+
+// Searches for a signal with custom user handler.
+// NOTE: Ignored signals should already be taken care of by handling the specials signals first
+// NOTE: Only searches, no side effects.
+int
+proc_find_custom_signal_handler(struct proc *p, struct sigaction *user_action, int *p_signum)
+{
+  for(int signum = 0; signum < MAX_SIG; signum++){
+    // pending?
+    if(!((1 << signum) & p->pending_signals)){
+      continue;
+    }
+
+    // blocked?
+    if(p->signal_mask & (1 << signum)){
+      continue;
+    }
+    
+    *p_signum = signum;
+    user_action->sa_handler = p->signal_handlers[signum];
+    user_action->sigmask = p->signal_handles_mask[signum];
+    return 1;
+  }
+
+  return 0;
 }
