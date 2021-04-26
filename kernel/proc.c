@@ -767,6 +767,8 @@ void check_not_overriden(struct proc *p, int signum, char *sig_name)
   }
 }
 
+// #define PRINT_KR_SIGS
+
 // TODO: what if the signal is ignore and blocked (both at the same time)?
 //       meanwhile, ignore overtakes blocked.
 // Caller should hold the process' lock
@@ -774,11 +776,15 @@ void
 proc_handle_special_signals(struct proc *p)
 {
   int continued;
-  // int prev_freezed;
+  #ifdef PRINT_KR_SIGS
+  int prev_freezed;
+  #endif
   void *handler;
   while (1) {
     continued = 0;
-    // prev_freezed = p->freezed;
+    #ifdef PRINT_KR_SIGS
+    prev_freezed = p->freezed;
+    #endif
 
     for (int signum = 0; signum < MAX_SIG; ++signum) {
       // pending?
@@ -829,23 +835,32 @@ proc_handle_special_signals(struct proc *p)
     }
 
     if (p->killed) {
-      // printf("%d killed\n", p->pid);
+      #ifdef PRINT_KR_SIGS
+      printf("%d killed\n", p->pid);
+      #endif
+
       // no other special signal matters.
       // see the note in trap.c on why not exit.
       return;
     }
     else if (p->freezed) {
       if (continued) {
-        // if (prev_freezed) {
-        //   printf("%d continued\n", p->pid);
-        // }
+        #ifdef PRINT_KR_SIGS
+        if (prev_freezed) {
+          printf("%d continued\n", p->pid);
+        }
+        #endif
+
         p->freezed = 0;
         return;
       }
       
-      // if (!prev_freezed) {
-      //   printf("%d stopped\n", p->pid);
-      // }
+      #ifdef PRINT_KR_SIGS
+      if (!prev_freezed) {
+        printf("%d stopped\n", p->pid);
+      }
+      #endif
+
       // yield back to scheduler until continued.
       yield_no_locks(p);
     }

@@ -242,8 +242,53 @@ void test_cont_stop_immdt() {
   }
 }
 
+void test_non_special_sig_kernel_handler_stop_x3_cont() {
+  struct sigaction act_stop = (struct sigaction){
+    .sa_handler = (void*)SIGSTOP,
+    .sigmask = 8
+  };
+  struct sigaction act_cont = (struct sigaction){
+    .sa_handler = (void*)SIGCONT,
+    .sigmask = 0
+  };
+  sigaction(5, &act_stop, 0);
+  sigaction(6, &act_cont, 0);
+
+  int pid_child = fork();
+  if (pid_child < 0) {
+    printf("fork failed\n");
+    exit(1);
+  }
+  else if (pid_child == 0) {
+    // child
+    for (int c = 0; ; c++) {
+    }
+  }
+  else {
+    // parent
+    struct sigaction act_dfl = (struct sigaction){
+      .sa_handler = (void*)SIG_DFL,
+      .sigmask = 0
+    };
+    struct sigaction old_act;
+    sigaction(5, &act_dfl, &old_act);
+    printf("old handler: %d, mask: %d\n", (int)(uint64)old_act.sa_handler, old_act.sigmask);
+
+    sleep(6);
+    kill(pid_child, 5);
+    kill(pid_child, 5);
+    kill(pid_child, 5);
+    sleep(30);
+    kill(pid_child, 6);
+    sleep(30);
+    kill(pid_child, 7);
+    wait(0);
+
+    kill(getpid(), 5);
+  }
+}
+
 void main(int argc, char *argv[]) {
-  test_cont_stop();
-  test_cont_stop_immdt();
+  test_non_special_sig_kernel_handler_stop_x3_cont();
   exit(0);
 }
