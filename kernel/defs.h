@@ -105,9 +105,13 @@ void            yield(void);
 int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
+
+// SIGNAL:
 uint            sigprocmask(uint sigmask);
 int             sigaction(int signum, uint64 act_addr, uint64 old_act_addr);
 void            sigret(void);
+void            proc_handle_special_signals(struct proc *p);
+int             proc_find_custom_signal_handler(struct proc *p, struct sigaction *user_action, int *p_signum);
 
 // swtch.S
 void            swtch(struct context*, struct context*);

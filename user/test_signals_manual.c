@@ -72,7 +72,178 @@ void test_old_act(){
   printf("test_old_act is successful\n");
 }
 
+void test_sigkill() {
+  int pid_child = fork();
+  if (pid_child < 0) {
+    printf("fork failed\n");
+    exit(1);
+  }
+  else if (pid_child == 0) {
+    // child
+    for (int c = 0; ; c++) {
+      printf("%d\n", c);
+    }
+  }
+  else {
+    // parent
+    sleep(20);
+    if (kill(pid_child, SIGKILL) < 0) {
+      printf("kill failed\n");
+      exit(1);
+    }
+    wait(0);
+  }
+}
+
+void test_stop_kill() {
+  int pid_child = fork();
+  if (pid_child < 0) {
+    printf("fork failed\n");
+    exit(1);
+  }
+  else if (pid_child == 0) {
+    // child
+    for (int c = 0; ; c++) {
+      printf("%d\n", c);
+    }
+  }
+  else {
+    // parent
+    sleep(10);
+    if (kill(pid_child, SIGSTOP) < 0) {
+      printf("kill failed\n");
+      exit(1);
+    }
+    sleep(50);
+    kill(pid_child, SIGKILL);
+    wait(0);
+  }
+}
+
+void test_stop_cont_kill() {
+  int pid_child = fork();
+  if (pid_child < 0) {
+    printf("fork failed\n");
+    exit(1);
+  }
+  else if (pid_child == 0) {
+    // child
+    for (int c = 0; ; c++) {
+    }
+  }
+  else {
+    // parent
+    sleep(6);
+    if (kill(pid_child, SIGSTOP) < 0) {
+      printf("kill failed\n");
+      exit(1);
+    }
+    sleep(40);
+    kill(pid_child, SIGCONT);
+    sleep(6);
+    kill(pid_child, SIGKILL);
+    wait(0);
+  }
+}
+
+void test_stop_x3_cont() {
+  int pid_child = fork();
+  if (pid_child < 0) {
+    printf("fork failed\n");
+    exit(1);
+  }
+  else if (pid_child == 0) {
+    // child
+    for (int c = 0; ; c++) {
+    }
+  }
+  else {
+    // parent
+    sleep(6);
+    kill(pid_child, SIGSTOP);
+    kill(pid_child, SIGSTOP);
+    kill(pid_child, SIGSTOP);
+    sleep(40);
+    kill(pid_child, SIGCONT);
+    sleep(6);
+    kill(pid_child, SIGKILL);
+    wait(0);
+  }
+}
+
+void test_stop_x3_cont_immdt() {
+  int pid_child = fork();
+  if (pid_child < 0) {
+    printf("fork failed\n");
+    exit(1);
+  }
+  else if (pid_child == 0) {
+    // child
+    for (int c = 0; ; c++) {
+    }
+  }
+  else {
+    // parent
+    sleep(6);
+    kill(pid_child, SIGSTOP);
+    kill(pid_child, SIGSTOP);
+    kill(pid_child, SIGSTOP);
+    kill(pid_child, SIGCONT);
+    sleep(30);
+    kill(pid_child, SIGKILL);
+    wait(0);
+  }
+}
+
+void test_cont_stop() {
+  printf("cont_stop:\n");
+  int pid_child = fork();
+  if (pid_child < 0) {
+    printf("fork failed\n");
+    exit(1);
+  }
+  else if (pid_child == 0) {
+    // child
+    for (int c = 0; ; c++) {
+    }
+  }
+  else {
+    // parent
+    sleep(6);
+    kill(pid_child, SIGCONT);
+    sleep(1);
+    kill(pid_child, SIGSTOP);
+    sleep(20);
+    kill(pid_child, SIGKILL);
+    wait(0);
+  }
+}
+
+void test_cont_stop_immdt() {
+  printf("cont_stop_immdt:\n");
+  int pid_child = fork();
+  if (pid_child < 0) {
+    printf("fork failed\n");
+    exit(1);
+  }
+  else if (pid_child == 0) {
+    // child
+    for (int c = 0; ; c++) {
+    }
+  }
+  else {
+    // parent
+    sleep(6);
+    kill(pid_child, SIGCONT);
+    kill(pid_child, SIGSTOP);
+    sleep(20);
+    kill(pid_child, SIGKILL);
+    wait(0);
+  }
+}
+
 void main(int argc, char *argv[]) {
-  test_sigret();
+  test_cont_stop();
+  test_cont_stop_immdt();
   exit(0);
 }
