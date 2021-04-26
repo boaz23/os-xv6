@@ -56,7 +56,8 @@ procinit(void)
   initlock(&wait_lock, "wait_lock");
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
-      p->threads[0].kstack = KSTACK((int) (p - proc)); // *tc*
+      // THREADS: proc-init kstack
+      p->threads[0].kstack = KSTACK((int) (p - proc));
       for(int i = 0; i < NTHREAD; i++){
         initlock(&p->threads[i].lock, "thread");
       }
@@ -144,7 +145,7 @@ found:
   p->pid = allocpid();
   p->state = P_USED;
 
-  // init thread *tc*
+  // THREADS: allocproc: init thread
   t = &p->threads[0];
   t->tid = alloctid(p);
   t->state = T_USED;
@@ -194,10 +195,10 @@ found:
 // free a proc structure and the data hanging from it,
 // including user pages.
 // p->lock must be held.
+// THREADS: freeproc
 static void
 freeproc(struct proc *p)
 {
-  // *tc*
   struct thread *t0 = &p->threads[0];
   if(t0->trapframe)
     kfree((void*)t0->trapframe);
@@ -250,8 +251,9 @@ proc_pagetable(struct proc *p)
   }
 
   // map the trapframe just below TRAMPOLINE, for trampoline.S.
+  // THREADS: proc_pagetable: trapframe
   if(mappages(pagetable, TRAPFRAME, PGSIZE,
-              (uint64)(p->threads[0].trapframe), PTE_R | PTE_W) < 0){ // *tc*
+              (uint64)(p->threads[0].trapframe), PTE_R | PTE_W) < 0){
     uvmunmap(pagetable, TRAMPOLINE, 1, 0);
     uvmfree(pagetable, 0);
     return 0;
@@ -296,7 +298,7 @@ userinit(void)
   uvminit(p->pagetable, initcode, sizeof(initcode));
   p->sz = PGSIZE;
 
-  // *tc*
+  // THREADS: userinit: trapframe
   // prepare for the very first "return" from kernel to user.
   p->threads[0].trapframe->epc = 0;      // user program counter
   p->threads[0].trapframe->sp = PGSIZE;  // user stack pointer
@@ -336,7 +338,8 @@ fork(void)
 {
   int i, pid;
   struct proc *np;
-  struct thread *t = mythread(); // *tc*
+  // THREADS: fork: mythread()
+  struct thread *t = mythread();
   struct proc *p = t->process;
 
 
@@ -353,11 +356,11 @@ fork(void)
   }
   np->sz = p->sz;
 
-  // *tc*
+  // THREADS: fork: trapframe
   // copy saved user registers.
   *(np->threads[0].trapframe) = *(t->trapframe);
 
-  // *tc*
+  // THREADS: fork: return value
   // Cause fork to return 0 in the child.
   np->threads[0].trapframe->a0 = 0;
 
@@ -375,7 +378,8 @@ fork(void)
   np->cwd = idup(p->cwd);
 
   safestrcpy(np->name, p->name, sizeof(p->name));
-  safestrcpy(np->threads[0].name, t->name, sizeof(t->name)); // *tc*
+  // THREADS: fork: name
+  safestrcpy(np->threads[0].name, t->name, sizeof(t->name));
 
   pid = np->pid;
 
@@ -385,13 +389,14 @@ fork(void)
   np->parent = p;
   release(&wait_lock);
 
-  // *tc*
+  // THREADS: fork: thread state
   acquire(&np->threads[0].lock);
   np->threads[0].state = T_RUNNABLE;  
   release(&np->threads[0].lock);
 
   acquire(&np->lock);
-  np->state = P_SCHEDULABLE;  // *tc*
+  // THREADS: fork: process state
+  np->state = P_SCHEDULABLE;
   release(&np->lock);
 
   return pid;
@@ -446,7 +451,7 @@ exit(int status)
   // Parent might be sleeping in wait().
   wakeup(p->parent);
   
-  // *tc*
+  // THREADS: exit: thread state
   acquire(&t->lock);
   t->xstate = status;
   t->state = T_FREE;
@@ -454,7 +459,8 @@ exit(int status)
   acquire(&p->lock);
 
   p->xstate = status;
-  p->state = P_ZOMBIE; // *tc*
+  // THREADS: exit: process state
+  p->state = P_ZOMBIE;
 
   release(&wait_lock);
 
@@ -483,7 +489,8 @@ wait(uint64 addr)
         acquire(&np->lock);
 
         havekids = 1;
-        if(np->state == P_ZOMBIE){ // *tc*
+        // THREADS: wait: process state
+        if(np->state == P_ZOMBIE){
           // Found one.
           pid = np->pid;
           if(addr != 0 && copyout(p->pagetable, addr, (char *)&np->xstate,
@@ -519,8 +526,9 @@ wait(uint64 addr)
 //  - swtch to start running that process.
 //  - eventually that process transfers control
 //    via swtch back to the scheduler.
+// THREADS: scheduler
 void
-scheduler(void) // *tc*
+scheduler(void)
 {
   struct proc *p;
   struct thread *t;
@@ -562,8 +570,9 @@ scheduler(void) // *tc*
 // be proc->intena and proc->noff, but that would
 // break in the few places where a lock is held but
 // there's no process.
+// THREADS: sched
 void
-sched(void) // *tc*
+sched(void)
 {
   int intena;
   struct thread *t = mythread();
@@ -588,8 +597,9 @@ sched(void) // *tc*
 }
 
 // Give up the CPU for one scheduling round.
+// THREADS: yield
 void
-yield(void) // *tc*
+yield(void)
 {
   struct thread *t = mythread();
   struct proc *p = t->process;
@@ -631,8 +641,9 @@ forkret(void)
 
 // Atomically release lock and sleep on chan.
 // Reacquires lock when awakened.
+// THREADS: sleep
 void
-sleep(void *chan, struct spinlock *lk) // *tc*
+sleep(void *chan, struct spinlock *lk)
 {
   struct thread *t = mythread();
   struct proc *p = t->process;
@@ -665,8 +676,9 @@ sleep(void *chan, struct spinlock *lk) // *tc*
 
 // Wake up all processes sleeping on chan.
 // Must be called without any p->lock.
+// THREADS: wakeup
 void
-wakeup(void *chan) // *tc*
+wakeup(void *chan)
 {
   struct proc *p;
   struct thread *t;
@@ -743,8 +755,9 @@ either_copyin(void *dst, int user_src, uint64 src, uint64 len)
 // Runs when user types ^P on console.
 // No lock to avoid wedging a stuck machine further.
 // TODO: add for threads
+// THREADS: procdump
 void
-procdump(void) // *tc*
+procdump(void)
 {
   static char *states[] = {
   [P_USED]    "used",
@@ -820,8 +833,9 @@ int sigaction(int signum, uint64 act_addr, uint64 old_act_addr){
   return 0;
 }
 
+// THREADS: sigret
 void
-sigret(void){ // *tc*
+sigret(void){
   struct thread *t = mythread();
   struct proc *p = t->process;
 
