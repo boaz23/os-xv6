@@ -206,16 +206,14 @@ freeproc(struct proc *p)
   if(t0->trapframe)
     kfree((void*)t0->trapframe);
   for(int i = 0; i < NTHREAD; i++){
-    p->threads[i] = (struct thread){
-      .process = 0,
-      .state = T_UNUSED,
-      .chan = 0,
-      .killed = 0,
-      .xstate = 0,
-      .tid = 0,
-      .trapframe = 0,
-      .name[0] = 0 
-    };
+    struct thread *t = &p->threads[i];
+    t->chan = 0;
+    t->killed = 0;
+    t->name[0] = 0;
+    t->state = T_UNUSED;
+    t->tid = 0;
+    t->xstate = 0;
+    t->trapframe = 0;
   }
   p->backup_trapframe = 0;
   if(p->pagetable)
@@ -346,7 +344,6 @@ fork(void)
   // THREADS: fork: mythread()
   struct thread *t = mythread();
   struct proc *p = t->process;
-
 
   // Allocate process.
   if((np = allocproc()) == 0){
