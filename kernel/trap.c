@@ -156,15 +156,15 @@ handle_proc_signals(struct proc *p)
     // back up the current trapframe
     *p->backup_trapframe = *p->trapframe;
 
-    // inject a call to 'sigret' system call
-    saved_sp = p->trapframe->sp;
-    // copyout(p->pagetable, saved_sp, sigret_call, 8);
-    // why memmove??
-    copyout(p->pagetable, saved_sp, (char*)TRAMP_ADDR(call_syscall_sigret), TRAMP_ADDR(call_syscall_sigret_end) - TRAMP_ADDR(call_syscall_sigret));
-    p->trapframe->ra = saved_sp;
+    // fix the user's stack pointer (so injecting will not overwrite anything)
+    saved_sp = p->trapframe->sp - (TRAMP_ADDR(call_syscall_sigret_end) - TRAMP_ADDR(call_syscall_sigret));
+    p->trapframe->sp = saved_sp;
 
-    // fix the user's stack point (skip the injected call)
-    p->trapframe->sp = saved_sp - (TRAMP_ADDR(call_syscall_sigret_end) - TRAMP_ADDR(call_syscall_sigret));
+    // inject a call to 'sigret' system call
+    copyout(p->pagetable, saved_sp, (char*)TRAMP_ADDR(call_syscall_sigret), TRAMP_ADDR(call_syscall_sigret_end) - TRAMP_ADDR(call_syscall_sigret));
+
+    // set the return address to the injected call
+    p->trapframe->ra = saved_sp;
 
     // prepare for calling the handler
     p->trapframe->a0 = i;

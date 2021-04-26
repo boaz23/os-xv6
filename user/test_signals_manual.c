@@ -13,7 +13,10 @@ void func(void) {
 }
 
 void signal_printer_cont(int sig) {
+  int a = 5;
+  int b = 8;
 	printf("custom handler for %d signal\n", sig);
+	printf("a2 = %d, b2 = %d\n", a, b);
 }
 
 int test_sigret_demi_f(int a) {
@@ -21,6 +24,8 @@ int test_sigret_demi_f(int a) {
 }
 
 void test_sigret(){
+  int a = 9;
+  int b = 7;
   struct sigaction sigact = {
     &signal_printer_cont,
     0
@@ -38,6 +43,7 @@ void test_sigret(){
   kill(getpid(), 3);
   sleep(50);
   printf("5*5 = %d\n", test_sigret_demi_f(5));
+	printf("a = %d, b = %d\n", a, b);
   printf("test_sigret is successful\n");
 }
 

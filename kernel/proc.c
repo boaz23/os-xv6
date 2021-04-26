@@ -725,6 +725,8 @@ sigprocmask(uint sigmask){
   // Right now, this value is only changed temporarily until the
   // custom handler ends.
   old_mask = p->signal_mask;
+
+  // do not block SIGKILL and SIGSTOP
   p->signal_mask = sigmask & (~((1 << SIGKILL) | (1 << SIGSTOP)));
   release(&p->lock);
 
@@ -740,36 +742,43 @@ int sigaction(int signum, uint64 act_addr, uint64 old_act_addr){
     return -1;
   }
 
+  acquire(&p->lock);
+
   if(old_act_addr != 0){
     old_act.sa_handler = p->signal_handlers[signum];
     old_act.sigmask = p->signal_handles_mask[signum];
-    if(copyout(p->pagetable, old_act_addr, (char *)&old_act, sizeof(old_act)) < 0){
+    if(copyout(p->pagetable, old_act_addr, (char *)&old_act, sizeof(old_act)) < 0) {
+      release(&p->lock);
       return -1;
     }
   }
 
   if(act_addr != 0){
-    if(copyin(p->pagetable, (char *)&new_act, act_addr, sizeof(new_act)) < 0){
+    if(copyin(p->pagetable, (char *)&new_act, act_addr, sizeof(new_act)) < 0) {
+      release(&p->lock);
       return -1;
     }
     p->signal_handlers[signum] = new_act.sa_handler;
     p->signal_handles_mask[signum] = new_act.sigmask;
   }
 
+  release(&p->lock);
   return 0;
 }
 
 void
 sigret(void){
   struct proc *p = myproc();
+  acquire(&p->lock);
   *p->trapframe = *p->backup_trapframe;
   p->signal_mask = p->signal_mask_backup;
+  release(&p->lock);
 }
 
 int
 is_valid_signum(int signum)
 {
-  return signum < 32;
+  return signum >= 0 && signum < 32;
 }
 
 int
