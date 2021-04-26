@@ -13,6 +13,9 @@ struct proc proc[NPROC];
 
 struct proc *initproc;
 
+static char *process_states_names[];
+static char *threads_states_names[];
+
 int nextpid = 1;
 struct spinlock pid_lock;
 
@@ -306,6 +309,7 @@ userinit(void)
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
 
+  p->threads[0].state = T_RUNNABLE;
   p->state = P_SCHEDULABLE;
 
   release(&p->lock);
@@ -582,12 +586,16 @@ sched(void)
     panic("sched p->lock");
   if(!holding(&t->lock))
     panic("sched t->lock");
-  if(mycpu()->noff != 1)
+  // THREADS: we now hold 2 locks, so the depth of the push_off() has to be 2
+  if(mycpu()->noff != 2)
     panic("sched locks");
-  if(p->state != P_SCHEDULABLE)
-    panic("sched process SCHEDULABLE");
-  if(t->state == T_RUNNING)
-    panic("sched thread RUNNING");
+  if(t->state == T_RUNNING) {
+    panicf(
+      "sched thread RUNNING (pid=%d, pstate=%d, pname='%s', tid=%d, tstate=%s, tname='%s')",
+      p->pid, process_states_names[p->state], p->name,
+      t->tid, threads_states_names[t->tid], t->name
+    );
+  }
   if(intr_get())
     panic("sched interruptible");
 
@@ -624,9 +632,11 @@ void
 forkret(void)
 {
   static int first = 1;
+  struct thread *t = mythread();
 
-  // Still holding p->lock from scheduler.
-  release(&myproc()->lock);
+  // Still holding locks from scheduler.
+  release(&t->lock);
+  release(&t->process->lock);
 
   if (first) {
     // File system initialization must be run in the context of a
@@ -751,6 +761,19 @@ either_copyin(void *dst, int user_src, uint64 src, uint64 len)
   }
 }
 
+static char *process_states_names[] = {
+  [P_USED]        "used",
+  [P_ZOMBIE]      "zombie",
+  [P_SCHEDULABLE] "schedulable"
+};
+static char *threads_states_names[] = {
+  [T_USED]     "used",
+  [T_SLEEPING] "sleeping",
+  [T_RUNNABLE] "runnable",
+  [T_RUNNING]  "running",
+  [T_FREE]     "free",
+};
+
 // Print a process listing to console.  For debugging.
 // Runs when user types ^P on console.
 // No lock to avoid wedging a stuck machine further.
@@ -759,11 +782,6 @@ either_copyin(void *dst, int user_src, uint64 src, uint64 len)
 void
 procdump(void)
 {
-  static char *states[] = {
-  [P_USED]    "used",
-  [P_ZOMBIE]  "zombie",
-  [P_SCHEDULABLE]    "schedulable"
-  };
   struct proc *p;
   char *state;
 
@@ -771,8 +789,8 @@ procdump(void)
   for(p = proc; p < &proc[NPROC]; p++){
     if(p->state == P_UNUSED)
       continue;
-    if(p->state >= 0 && p->state < NELEM(states) && states[p->state])
-      state = states[p->state];
+    if(p->state >= 0 && p->state < NELEM(process_states_names) && process_states_names[p->state])
+      state = process_states_names[p->state];
     else
       state = "???";
     printf("%d %s %s", p->pid, state, p->name);
