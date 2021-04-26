@@ -275,6 +275,13 @@ void test_sigcont_then_stop(char *s) {
   }
 }
 
+// TODO: test idea - in custom handler
+//   register a custom handler for 2 signals (s1 and s2).
+//   in the s1 handler, send the signal s2.
+//   in the s2 handler, change a global state.
+//   send s1 signal.
+//   after s1 handler, check the global state.
+
 void main(int argc, char *argv[]) {
   test_sigret();
   exit(0);

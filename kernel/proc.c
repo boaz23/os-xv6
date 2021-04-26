@@ -742,6 +742,7 @@ sigret(void){
   acquire(&p->lock);
   *p->trapframe = *p->backup_trapframe;
   p->signal_mask = p->signal_mask_backup;
+  p->in_custom_handler = 0;
   release(&p->lock);
 }
 
@@ -771,6 +772,10 @@ void check_not_overriden(struct proc *p, int signum, char *sig_name)
 
 // TODO: what if the signal is ignore and blocked (both at the same time)?
 //       meanwhile, ignore overtakes blocked.
+// TODO: how to handle SIGCONT in the following cases (or any valid combination of them):
+//   * ignored
+//   * blocked
+//   * custom handler
 // Caller should hold the process' lock
 void
 proc_handle_special_signals(struct proc *p)

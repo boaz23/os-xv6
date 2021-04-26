@@ -116,7 +116,7 @@ struct proc {
   // controls whether the process was freezed by a SIGSTOP signal. let's handling SIGCONT know whether to yield or not.
   int freezed;
   
-  // TODO: flag for mid handling custom handler
-  // usage places: allocproc, freeproc, fork, sigprocmask, sigaction, sigret, handle_proc_signals,
-  //               kill
+  int in_custom_handler;
+
+  // SIGNAL: modification places: allocproc, freeproc, fork, sigprocmask, sigaction, sigret, handle_proc_signals, kill
 };

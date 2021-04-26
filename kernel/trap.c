@@ -122,6 +122,9 @@ prepare_call_custom_user_signal_handler(struct proc *p, struct sigaction *user_a
 
   // unset the signal
   p->pending_signals &= ~(1 << signum);
+
+  // mark that the process is running a custom user signal handler
+  p->in_custom_handler = 1;
 }
 
 void
@@ -130,9 +133,7 @@ handle_proc_signals_core(struct proc *p)
   int found_custom_handler;
   int user_action_signum;
   struct sigaction user_action;
-
-  // TODO: add the field which determines whether the
-  // process is currently in a custom user handler
+  
   proc_handle_special_signals(p);
   if (p->killed) {
     // preserve old behavior: if p is killed, then let it continue
@@ -140,9 +141,11 @@ handle_proc_signals_core(struct proc *p)
     return;
   }
 
-  found_custom_handler = proc_find_custom_signal_handler(p, &user_action, &user_action_signum);
-  if (found_custom_handler) {
-    prepare_call_custom_user_signal_handler(p, &user_action, user_action_signum);
+  if (!p->in_custom_handler) {
+    found_custom_handler = proc_find_custom_signal_handler(p, &user_action, &user_action_signum);
+    if (found_custom_handler) {
+      prepare_call_custom_user_signal_handler(p, &user_action, user_action_signum);
+    }
   }
 }
 
