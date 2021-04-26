@@ -47,20 +47,23 @@ usertrap(void)
   // since we're now in the kernel.
   w_stvec((uint64)kernelvec);
 
-  struct proc *p = myproc();
+  // THREADS: The thread hold the trapframe therefore
+  //          proc is not needed here
+  struct thread *t = mythread();
   
   // save user program counter.
-  p->trapframe->epc = r_sepc();
+  t->trapframe->epc = r_sepc();
   
   if(r_scause() == 8){
     // system call
 
-    if(p->killed)
+    // THREADS-TODO: covert to multi-threads
+    if(THREAD_IS_KILLED(t))
       exit(-1);
 
     // sepc points to the ecall instruction,
     // but we want to return to the next instruction.
-    p->trapframe->epc += 4;
+    t->trapframe->epc += 4;
 
     // an interrupt will change sstatus &c registers,
     // so don't enable until done with those registers.
@@ -70,12 +73,13 @@ usertrap(void)
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
-    printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+    printf("usertrap(): unexpected scause %p pid=%d tid=%d\n", r_scause(), t->process->pid, t->tid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
-    p->killed = 1;
+    t->process->killed = 1;
+    t->killed = 1;
   }
 
-  if(p->killed)
+  if(THREAD_IS_KILLED(t))
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
@@ -101,21 +105,21 @@ prepare_call_custom_user_signal_handler(struct thread *t, struct sigaction *user
   uint64 saved_sp;
 
   // back up the current trapframe
-  *p->backup_trapframe = *p->trapframe;
+  *p->backup_trapframe = *t->trapframe;
 
   // fix the user's stack pointer (so injecting will not overwrite anything)
-  saved_sp = p->trapframe->sp - (TRAMP_ADDR(call_syscall_sigret_end) - TRAMP_ADDR(call_syscall_sigret));
-  p->trapframe->sp = saved_sp;
+  saved_sp = t->trapframe->sp - (TRAMP_ADDR(call_syscall_sigret_end) - TRAMP_ADDR(call_syscall_sigret));
+  t->trapframe->sp = saved_sp;
 
   // inject a call to 'sigret' system call
   copyout(p->pagetable, saved_sp, (char*)TRAMP_ADDR(call_syscall_sigret), TRAMP_ADDR(call_syscall_sigret_end) - TRAMP_ADDR(call_syscall_sigret));
 
   // set the return address to the injected call
-  p->trapframe->ra = saved_sp;
+  t->trapframe->ra = saved_sp;
 
   // prepare for calling the handler
-  p->trapframe->a0 = signum;
-  p->trapframe->epc = (uint64)user_action->sa_handler;
+  t->trapframe->a0 = signum;
+  t->trapframe->epc = (uint64)user_action->sa_handler;
 
   // replace the signal mask
   p->signal_mask_backup = p->signal_mask;
@@ -136,8 +140,8 @@ handle_proc_signals_core(struct thread *t)
   struct sigaction user_action;
   struct proc *p = t->process;
 
-  proc_handle_special_signals(p);
-  if (t->killed) {
+  proc_handle_special_signals(t);
+  if (THREAD_IS_KILLED(t)) {
     // preserve old behavior: if t is killed, then let it continue
     // for a bit until we get to usertrap
     return;
@@ -185,10 +189,10 @@ usertrapret(void)
 
   // set up trapframe values that uservec will need when
   // the process next re-enters the kernel.
-  p->trapframe->kernel_satp = r_satp();         // kernel page table
-  p->trapframe->kernel_sp = p->kstack + PGSIZE; // process's kernel stack
-  p->trapframe->kernel_trap = (uint64)usertrap;
-  p->trapframe->kernel_hartid = r_tp();         // hartid for cpuid()
+  t->trapframe->kernel_satp = r_satp();         // kernel page table
+  t->trapframe->kernel_sp = t->kstack + PGSIZE; // process's kernel stack
+  t->trapframe->kernel_trap = (uint64)usertrap;
+  t->trapframe->kernel_hartid = r_tp();         // hartid for cpuid()
 
   // set up the registers that trampoline.S's sret will use
   // to get to user space.
@@ -200,7 +204,8 @@ usertrapret(void)
   w_sstatus(x);
 
   // set S Exception Program Counter to the saved user pc.
-  w_sepc(p->trapframe->epc);
+  // THREADS: the thread has the trapframe
+  w_sepc(t->trapframe->epc);
 
   // tell trampoline.S the user page table to switch to.
   uint64 satp = MAKE_SATP(p->pagetable);
@@ -234,8 +239,10 @@ kerneltrap()
   }
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)
+  // THREADS: check if we are running a thread
+  if(which_dev == 2 && mythread() != 0 && mythread()->state == T_RUNNING) {
     yield();
+  }
 
   // the yield() may have caused some traps to occur,
   // so restore trap registers for use by kernelvec.S's sepc instruction.
