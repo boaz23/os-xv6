@@ -77,11 +77,13 @@ int
 pipewrite(struct pipe *pi, uint64 addr, int n)
 {
   int i = 0;
-  struct proc *pr = myproc();
+  // THREADS: changed to mythread()
+  struct thread *t = mythread();
+  struct proc *pr = t->process;
 
   acquire(&pi->lock);
   while(i < n){
-    if(pi->readopen == 0 || pr->killed){
+    if(pi->readopen == 0 || THREAD_IS_KILLED(t)){
       release(&pi->lock);
       return -1;
     }
@@ -106,12 +108,14 @@ int
 piperead(struct pipe *pi, uint64 addr, int n)
 {
   int i;
-  struct proc *pr = myproc();
+  // THREADS: changed to mythread()
+  struct thread *t = mythread();
+  struct proc *pr = t->process;
   char ch;
 
   acquire(&pi->lock);
   while(pi->nread == pi->nwrite && pi->writeopen){  //DOC: pipe-empty
-    if(pr->killed){
+    if(THREAD_IS_KILLED(t)){
       release(&pi->lock);
       return -1;
     }

@@ -336,8 +336,8 @@ fork(void)
 {
   int i, pid;
   struct proc *np;
-  struct proc *p = myproc();
   struct thread *t = mythread(); // *tc*
+  struct proc *p = t->process;
 
 
   // Allocate process.
@@ -418,8 +418,8 @@ reparent(struct proc *p)
 void
 exit(int status)
 {
-  struct proc *p = myproc();
-  struct proc *t = mythread();
+  struct thread *t = mythread();
+  struct proc *p = t->process;
 
   if(p == initproc)
     panic("init exiting");
@@ -566,8 +566,8 @@ void
 sched(void) // *tc*
 {
   int intena;
-  struct proc *p = myproc();
   struct thread *t = mythread();
+  struct proc *p = t->process;
 
   if(!holding(&p->lock))
     panic("sched p->lock");
@@ -634,8 +634,8 @@ forkret(void)
 void
 sleep(void *chan, struct spinlock *lk) // *tc*
 {
-  struct proc *p = myproc();
   struct thread *t = mythread();
+  struct proc *p = t->process;
   
   // Must acquire p->lock in order to
   // change p->state and then call sched.
@@ -692,8 +692,6 @@ int
 kill(int pid, int signum)
 {
   struct proc *p;
-  struct thread *t;
-
 
   if(!is_valid_signum(signum)){
     return -1;
@@ -770,7 +768,8 @@ procdump(void) // *tc*
 }
 
 uint
-sigprocmask(uint sigmask){
+sigprocmask(uint sigmask)
+{
   struct proc *p = myproc();
   uint old_mask;
 

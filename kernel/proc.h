@@ -80,9 +80,10 @@ struct trapframe {
   /* 280 */ uint64 t6;
 };
 
+// THREADS-TODO: maybe we want to also check if the process was killed
+#define THREAD_IS_KILLED(t) ((t)->killed)
+
 // TODO: threads transition change might be needed in files:
-// bullets which starts in "--" indicate a high chance
-// that there is no need for any change.
 //   * console.c
 //   * exec.c
 //   * -- file.c
