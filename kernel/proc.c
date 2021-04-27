@@ -564,7 +564,7 @@ scheduler(void)
         // Switch to chosen process.  It is the process's job
         // to release its lock and then reacquire it
         // before jumping back to us.
-        for (struct thread *t = p->threads; t < ARR_END(p->threads); ++t) {
+        for (t = p->threads; t < ARR_END(p->threads); ++t) {
           acquire(&t->lock);
           if(t->state == T_RUNNABLE){
             t->state = T_RUNNING;
@@ -713,7 +713,7 @@ wakeup(void *chan)
 
   for(p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock);
-    for (struct thread *t = p->threads; t < ARR_END(p->threads); ++t) {
+    for (t = p->threads; t < ARR_END(p->threads); ++t) {
       if(t != mythread()){
         acquire(&t->lock);
         if(t->state == T_SLEEPING && t->chan == chan){
