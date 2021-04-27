@@ -7,6 +7,12 @@
 #include "defs.h"
 #include "signal.h"
 
+// THREADS: changed KSTACK macro to make room for kstacks for threads too
+// map kernel stacks beneath the trampoline,
+// each surrounded by invalid guard pages.
+#define KSTACK(p, t) (TRAMPOLINE - (((((p) - proc) * NTHREAD) + ((t) - (p)->threads) + 1)* 2*PGSIZE))
+#define ARR_END(a) (&((a)[(sizeof((a)) / sizeof((a)[0]))]))
+
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
@@ -44,8 +50,11 @@ proc_mapstacks(pagetable_t kpgtbl) {
     char *pa = kalloc();
     if(pa == 0)
       panic("kalloc");
-    uint64 va = KSTACK((int) (p - proc));
-    kvmmap(kpgtbl, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+    // THREADS: allocate kstacks
+    for (struct thread *t = p->threads; t < ARR_END(p->threads); ++t) {
+      uint64 va = KSTACK(p, t);
+      kvmmap(kpgtbl, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+    }
   }
 }
 
@@ -58,12 +67,13 @@ procinit(void)
   initlock(&pid_lock, "nextpid");
   initlock(&wait_lock, "wait_lock");
   for(p = proc; p < &proc[NPROC]; p++) {
-      initlock(&p->lock, "proc");
-      // THREADS: proc-init kstack
-      p->threads[0].kstack = KSTACK((int) (p - proc));
-      for(int i = 0; i < NTHREAD; i++){
-        initlock(&p->threads[i].lock, "thread");
-      }
+    initlock(&p->lock, "proc");
+    // THREADS: proc-init kstack
+    for (struct thread *t = p->threads; t < ARR_END(p->threads); ++t) {
+      t->kstack = KSTACK(p, t);
+      t->process = p;
+      initlock(&t->lock, "thread");
+    }
   }
 }
 
@@ -175,7 +185,6 @@ found:
   ptf = (struct trapframe *)p->kpage_trapframes;
   for(int i = 0; i < NTHREAD; i++){
     p->threads[i].trapframe = ptf + i + 1;
-    p->threads[i].process = p;
   }
   
   // TODO: where should the backup_trapframe be? in process or per thread
