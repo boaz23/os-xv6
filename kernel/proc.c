@@ -478,7 +478,8 @@ wait(uint64 addr)
 {
   struct proc *np;
   int havekids, pid;
-  struct proc *p = myproc();
+  struct thread *t = mythread();
+  struct proc *p = t->process;
 
   acquire(&wait_lock);
 
@@ -511,7 +512,7 @@ wait(uint64 addr)
     }
 
     // No point waiting if we don't have any children.
-    if(!havekids || p->killed){
+    if(!havekids || THREAD_IS_KILLED(t)){
       release(&wait_lock);
       return -1;
     }
@@ -965,10 +966,8 @@ proc_handle_special_signals(struct thread *t)
       #ifdef PRINT_KR_SIGS
       printf("%d killed\n", p->pid);
       #endif
-
-      acquire(&t->lock);
+      
       t->killed = 1;
-      release(&t->lock);
 
       // no other special signal matters.
       // see the note in trap.c on why not exit.
