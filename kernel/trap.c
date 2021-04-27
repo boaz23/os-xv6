@@ -214,6 +214,7 @@ usertrapret(void)
   // switches to the user page table, restores user registers,
   // and switches to user mode with sret.
   uint64 fn = TRAMPOLINE + (userret - trampoline);
+  // THREADS: trapframe address
   ((void (*)(uint64,uint64))fn)(TRAPFRAME_THREAD(p, t), satp);
 }
 

@@ -656,6 +656,7 @@ void
 sleep(void *chan, struct spinlock *lk)
 {
   struct thread *t = mythread();
+  // needed in order to lock p->lock because sched() requires it
   struct proc *p = t->process;
   
   // Must acquire p->lock in order to
