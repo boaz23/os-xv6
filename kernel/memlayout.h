@@ -63,4 +63,6 @@
 //   TRAPFRAME (p->trapframe, used by the trampoline)
 //   TRAMPOLINE (the same page as in the kernel)
 #define TRAPFRAME (TRAMPOLINE - PGSIZE)
+
+// THREADS: thread trapframe addresses
 #define TRAPFRAME_THREAD(p, t) (TRAPFRAME + ((((t) - (p)->threads) + 1) * sizeof(struct trapframe)))

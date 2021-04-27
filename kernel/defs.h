@@ -95,6 +95,7 @@ int             kill(int, int);
 struct cpu*     mycpu(void);
 struct cpu*     getmycpu(void);
 struct proc*    myproc();
+// THREADS: mythread
 struct thread*  mythread();
 void            procinit(void);
 void            scheduler(void) __attribute__((noreturn));

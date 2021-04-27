@@ -63,7 +63,7 @@ sys_sleep(void)
   acquire(&tickslock);
   ticks0 = ticks;
   while(ticks - ticks0 < n){
-    // THREADS: 
+    // THREADS: is killed
     if(THREAD_IS_KILLED(mythread())){
       release(&tickslock);
       return -1;

@@ -130,7 +130,8 @@ allocpid() {
 
 // This function doesn't require lock since p->lock is held.
 int
-alloctid(struct proc* proc) {
+alloctid(struct proc* proc)
+{
   return proc->next_tid++;
 }
 
@@ -163,7 +164,6 @@ found:
   t0 = &p->threads[0];
   t0->tid = alloctid(p);
   t0->state = T_USED;
-  t0->process = p;
 
   // Allocate a trapframe page.
   if((p->kpage_trapframes = kalloc()) == 0){

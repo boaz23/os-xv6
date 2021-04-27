@@ -66,6 +66,7 @@ exec(char *path, char **argv)
   ip = 0;
 
   p = myproc();
+  // THREADS: exec trapframe
   trapframe = p->threads[0].trapframe;
   uint64 oldsz = p->sz;
 

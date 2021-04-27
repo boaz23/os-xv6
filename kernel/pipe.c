@@ -83,6 +83,7 @@ pipewrite(struct pipe *pi, uint64 addr, int n)
 
   acquire(&pi->lock);
   while(i < n){
+    // THREADS: is killed
     if(pi->readopen == 0 || THREAD_IS_KILLED(t)){
       release(&pi->lock);
       return -1;
@@ -115,6 +116,7 @@ piperead(struct pipe *pi, uint64 addr, int n)
 
   acquire(&pi->lock);
   while(pi->nread == pi->nwrite && pi->writeopen){  //DOC: pipe-empty
+    // THREADS: is killed
     if(THREAD_IS_KILLED(t)){
       release(&pi->lock);
       return -1;
