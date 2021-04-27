@@ -240,6 +240,7 @@ freeproc(struct proc *p)
   p->next_tid = 0;
 }
 
+// THREADS-LOCKS: no lock needed because it is called in functions which only 1 thread should execute
 // Create a user page table for a given process,
 // with no user memory, but with trampoline pages.
 pagetable_t
@@ -274,6 +275,7 @@ proc_pagetable(struct proc *p)
   return pagetable;
 }
 
+// THREADS-LOCKS: no lock needed because it is called in functions which only 1 thread should execute
 // Free a process's page table, and free the
 // physical memory it refers to.
 void
@@ -332,15 +334,18 @@ growproc(int n)
   uint sz;
   struct proc *p = myproc();
 
+  acquire(&p->lock);
   sz = p->sz;
   if(n > 0){
     if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
+      release(&p->lock);
       return -1;
     }
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
   }
   p->sz = sz;
+  release(&p->lock);
   return 0;
 }
 
@@ -414,6 +419,7 @@ fork(void)
   return pid;
 }
 
+// THREADS-LOCKS: no lock needed because it is called in functions which only 1 thread should execute
 // Pass p's abandoned children to init.
 // Caller must hold wait_lock.
 void
@@ -558,18 +564,19 @@ scheduler(void)
         // Switch to chosen process.  It is the process's job
         // to release its lock and then reacquire it
         // before jumping back to us.
-        t = &p->threads[0];
-        acquire(&t->lock);
-        if(t->state == T_RUNNABLE){
-          t->state = T_RUNNING;
-          c->thread = t;
-          swtch(&c->context, &t->context);
+        for (struct thread *t = p->threads; t < ARR_END(p->threads); ++t) {
+          acquire(&t->lock);
+          if(t->state == T_RUNNABLE){
+            t->state = T_RUNNING;
+            c->thread = t;
+            swtch(&c->context, &t->context);
 
-          // Process is done running for now.
-          // It should have changed its p->state before coming back.
-          c->thread = 0;
+            // Process is done running for now.
+            // It should have changed its p->state before coming back.
+            c->thread = 0;
+          }
+          release(&t->lock);
         }
-        release(&t->lock);
       }
       release(&p->lock);
     }
@@ -619,6 +626,7 @@ void
 yield(void)
 {
   struct thread *t = mythread();
+  // needs to lock p->lock because sched() requires it
   struct proc *p = t->process;
   acquire(&p->lock);
   acquire(&t->lock);
@@ -705,13 +713,14 @@ wakeup(void *chan)
 
   for(p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock);
-    t = &p->threads[0];
-    if(t != mythread()){
-      acquire(&t->lock);
-      if(t->state == T_SLEEPING && t->chan == chan){
-        t->state = T_RUNNABLE;
+    for (struct thread *t = p->threads; t < ARR_END(p->threads); ++t) {
+      if(t != mythread()){
+        acquire(&t->lock);
+        if(t->state == T_SLEEPING && t->chan == chan){
+          t->state = T_RUNNABLE;
+        }
+        release(&t->lock);
       }
-      release(&t->lock);
     }
     release(&p->lock);
   }
