@@ -132,7 +132,8 @@ static struct proc*
 allocproc(void)
 {
   struct proc *p;
-  struct thread *t;
+  struct thread *t0;
+  struct trapframe *ptf;
 
   for(p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock);
@@ -149,13 +150,13 @@ found:
   p->state = P_USED;
 
   // THREADS: allocproc: init thread
-  t = &p->threads[0];
-  t->tid = alloctid(p);
-  t->state = T_USED;
-  t->process = p;
+  t0 = &p->threads[0];
+  t0->tid = alloctid(p);
+  t0->state = T_USED;
+  t0->process = p;
 
   // Allocate a trapframe page.
-  if((t->trapframe = (struct trapframe *)kalloc()) == 0){
+  if((p->kpage_trapframes = kalloc()) == 0){
     freeproc(p);
     release(&p->lock);
     return 0;
@@ -171,13 +172,14 @@ found:
 
   // Set the trapframe for each thread
   // Also set the point to the thread process
-  for(int i = 1; i < NTHREAD; i++){
-    p->threads[i].trapframe = t->trapframe + i + 1;
+  ptf = (struct trapframe *)p->kpage_trapframes;
+  for(int i = 0; i < NTHREAD; i++){
+    p->threads[i].trapframe = ptf + i + 1;
     p->threads[i].process = p;
   }
   
   // TODO: where should the backup_trapframe be? in process or per thread
-  p->backup_trapframe = t->trapframe + 1;
+  p->backup_trapframe = ptf;
   p->freezed = 0;
   p->pending_signals = 0;
   p->signal_mask = 0;
@@ -188,9 +190,9 @@ found:
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
-  memset(&t->context, 0, sizeof(t->context));
-  t->context.ra = (uint64)forkret;
-  t->context.sp = t->kstack + PGSIZE;
+  memset(&t0->context, 0, sizeof(t0->context));
+  t0->context.ra = (uint64)forkret;
+  t0->context.sp = t0->kstack + PGSIZE;
 
   return p;
 }
@@ -202,9 +204,8 @@ found:
 static void
 freeproc(struct proc *p)
 {
-  struct thread *t0 = &p->threads[0];
-  if(t0->trapframe)
-    kfree((void*)t0->trapframe);
+  if(p->kpage_trapframes)
+    kfree(p->kpage_trapframes);
   for(int i = 0; i < NTHREAD; i++){
     struct thread *t = &p->threads[i];
     t->chan = 0;
@@ -255,7 +256,7 @@ proc_pagetable(struct proc *p)
   // map the trapframe just below TRAMPOLINE, for trampoline.S.
   // THREADS: proc_pagetable: trapframe
   if(mappages(pagetable, TRAPFRAME, PGSIZE,
-              (uint64)(p->threads[0].trapframe), PTE_R | PTE_W) < 0){
+              (uint64)p->kpage_trapframes, PTE_R | PTE_W) < 0){
     uvmunmap(pagetable, TRAMPOLINE, 1, 0);
     uvmfree(pagetable, 0);
     return 0;
@@ -694,14 +695,14 @@ wakeup(void *chan)
 
   for(p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock);
-      t = &p->threads[0];
-      if(t != mythread()){
-        acquire(&t->lock);
-        if(t->state == T_SLEEPING && t->chan == chan){
-          t->state = T_RUNNABLE;
-        }
-        release(&t->lock);
+    t = &p->threads[0];
+    if(t != mythread()){
+      acquire(&t->lock);
+      if(t->state == T_SLEEPING && t->chan == chan){
+        t->state = T_RUNNABLE;
       }
+      release(&t->lock);
+    }
     release(&p->lock);
   }
 }
