@@ -81,7 +81,7 @@ void test_sigkill() {
   else if (pid_child == 0) {
     // child
     for (int c = 0; ; c++) {
-      printf("%d\n", c);
+      
     }
   }
   else {
@@ -104,7 +104,7 @@ void test_stop_kill() {
   else if (pid_child == 0) {
     // child
     for (int c = 0; ; c++) {
-      printf("%d\n", c);
+      
     }
   }
   else {
