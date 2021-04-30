@@ -867,8 +867,7 @@ void
 sigret(void){
   struct thread *t = mythread();
   struct proc *p = t->process;
-
-  acquire(&p->lock);
+  
   acquire(&t->lock);
 
   *t->trapframe = *p->backup_trapframe;
@@ -876,7 +875,6 @@ sigret(void){
   p->in_custom_handler = 0;
 
   release(&t->lock);
-  release(&p->lock);
 }
 
 int
