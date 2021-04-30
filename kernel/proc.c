@@ -840,6 +840,7 @@ int sigaction(int signum, uint64 act_addr, uint64 old_act_addr){
 
   acquire(&p->lock);
 
+  // TODO: copy in from new act before writing
   if(old_act_addr != 0){
     old_act.sa_handler = p->signal_handlers[signum];
     old_act.sigmask = p->signal_handles_mask[signum];
