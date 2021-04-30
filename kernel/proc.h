@@ -167,6 +167,7 @@ struct proc {
 
   struct thread threads[NTHREAD];
   struct thread *thread0;
+  int threads_alive_count;
   
   uint pending_signals;
   uint signal_mask;         // specifies the signals which are blocked for this process

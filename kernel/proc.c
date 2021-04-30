@@ -27,6 +27,7 @@ struct spinlock pid_lock;
 
 extern void forkret(void);
 static void freeproc(struct proc *p);
+void exit_core();
 
 extern char trampoline[]; // trampoline.S
 
@@ -158,6 +159,8 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = P_USED;
+  p->killed = 0;
+  p->threads_alive_count = 1;
 
   // THREADS: allocproc: init thread
   t0 = p->thread0;
@@ -205,6 +208,19 @@ found:
   return p;
 }
 
+// THREADS-TODO: think about when to free a thread and how should it's exit status be stored.
+void
+freethread(struct thread *t)
+{
+  t->chan = 0;
+  t->killed = 0;
+  t->name[0] = 0;
+  t->state = T_UNUSED;
+  t->tid = 0;
+  t->xstate = 0;
+  t->trapframe = 0;
+}
+
 // THREADS-TODO: when allocating a thread, allocate a page for its kstack.
 //               therefore, it also needs to be freed,
 //               except for the thread with index 0 because its kstack is allocated statically.
@@ -218,14 +234,7 @@ freeproc(struct proc *p)
   if(p->kpage_trapframes)
     kfree(p->kpage_trapframes);
   for(int i = 0; i < NTHREAD; i++){
-    struct thread *t = &p->threads[i];
-    t->chan = 0;
-    t->killed = 0;
-    t->name[0] = 0;
-    t->state = T_UNUSED;
-    t->tid = 0;
-    t->xstate = 0;
-    t->trapframe = 0;
+    freethread(&p->threads[i]);
   }
   p->backup_trapframe = 0;
   if(p->pagetable)
@@ -240,6 +249,7 @@ freeproc(struct proc *p)
   p->state = P_UNUSED;
   p->freezed = 0;
   p->next_tid = 0;
+  p->threads_alive_count = 0;
 }
 
 // THREADS-LOCKS: no lock needed because it is called in functions which only 1 thread should execute
@@ -437,11 +447,76 @@ reparent(struct proc *p)
   }
 }
 
+void
+thread_kill_core(struct thread *t)
+{
+  if (t->state == T_SLEEPING) {
+    t->state = T_RUNNABLE;
+  }
+  t->killed = 1;
+}
+
+void
+thread_kill(struct thread *t)
+{
+  acquire(&t->lock);
+  thread_kill_core(t);
+  release(&t->lock);
+}
+
+void
+proc_kill_all_threads(struct proc *p)
+{
+  struct thread *t;
+  for (t = p->threads; t < ARR_END(p->threads); ++t) {
+    thread_kill(t);
+  }
+}
+
+void
+proc_kill_core(struct proc *p, int status)
+{
+  p->killed = 1;
+  p->xstate = status;
+}
+
+// THREADS: kthread_exit
+void
+kthread_exit(struct thread *t, int status)
+{
+  struct proc *p = t->process;
+  int should_exit = 0;
+  
+  acquire(&p->lock);
+  p->threads_alive_count--;
+  if (p->threads_alive_count == 0) {
+    should_exit = 1;
+    if (!p->killed) {
+      proc_kill_core(p, -1);
+    }
+  }
+  release(&p->lock);
+
+  acquire(&t->lock);
+  t->xstate = status;
+  t->state = T_FREE;
+
+  if (should_exit) {
+    release(&t->lock);
+    exit_core();
+  }
+  else {
+    sched();
+    panic("thread exited returned from scheduler.");
+  }
+}
+
 // Exit the current process.  Does not return.
 // An exited process remains in the zombie state
 // until its parent calls wait().
+// exit status should already have been set.
 void
-exit(int status)
+exit_core()
 {
   struct thread *t = mythread();
   struct proc *p = t->process;
@@ -470,26 +545,43 @@ exit(int status)
 
   // Parent might be sleeping in wait().
   wakeup(p->parent);
-  
-  // THREADS: exit: thread state
-  acquire(&t->lock);
-  t->xstate = status;
-  t->state = T_FREE;
 
   acquire(&p->lock);
 
-  p->xstate = status;
+  // exit status should already have been set
+  // THREADS: exit: process exit status set elsewhere
   // THREADS: exit: process state
   p->state = P_ZOMBIE;
 
   release(&wait_lock);
-
   // release process lock because sched expects it to be released
   release(&p->lock);
+
+  acquire(&t->lock); // required for the sched
 
   // Jump into the scheduler, never to return.
   sched();
   panic("zombie exit");
+}
+
+void
+exit(int status)
+{
+  // the current thread will return to trap and see he needs to kill him self.
+  // this also returns to the scheduler.
+
+  struct proc *p = myproc();
+
+  acquire(&p->lock);
+  if (p->killed) {
+    // the process was already killed, so we do not want to change anything else
+    release(&p->lock);
+    return;
+  }
+  proc_kill_core(p, status);
+  release(&p->lock);
+
+  proc_kill_all_threads(p);
 }
 
 // Wait for a child process to exit and return its pid.
@@ -916,6 +1008,7 @@ void
 proc_handle_special_signals(struct thread *t)
 {
   int continued;
+  int killed;
   #ifdef PRINT_KR_SIGS
   int prev_freezed;
   #endif
@@ -924,6 +1017,7 @@ proc_handle_special_signals(struct thread *t)
 
   while (1) {
     continued = 0;
+    killed = 0;
     #ifdef PRINT_KR_SIGS
     prev_freezed = p->freezed;
     #endif
@@ -937,7 +1031,7 @@ proc_handle_special_signals(struct thread *t)
       if (signum == SIGKILL) {
         check_not_overriden(p, SIGKILL, "SIGKILL");
         p->pending_signals &= ~(1 << signum);
-        p->killed = 1;
+        killed = 1;
       }
       else if (signum == SIGSTOP) {
         check_not_overriden(p, SIGSTOP, "SIGSTOP");
@@ -962,7 +1056,7 @@ proc_handle_special_signals(struct thread *t)
           continued = 1;
         }
         else if (handler == (void *)SIGKILL || (signum != SIGCONT && handler == (void *)SIG_DFL)) {
-          p->killed = 1;
+          killed = 1;
         }
         else if (handler == (void *)SIGSTOP) {
           p->freezed = 1;
@@ -976,14 +1070,15 @@ proc_handle_special_signals(struct thread *t)
       }
     }
 
-    if (p->killed) {
+    if (killed || p->killed) {
       #ifdef PRINT_KR_SIGS
       printf("%d killed\n", p->pid);
       #endif
-      
-      acquire(&t->lock);
-      t->killed = 1;
-      release(&t->lock);
+
+      if (!p->killed) {
+        proc_kill_core(p, -1);
+        proc_kill_all_threads(p);
+      }
 
       // no other special signal matters.
       // see the note in trap.c on why not exit.
