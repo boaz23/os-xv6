@@ -7,10 +7,10 @@
 #include "defs.h"
 #include "signal.h"
 
-// THREADS: changed KSTACK macro to make room for kstacks for threads too
+// THREADS: only the thread with index 0 has this kstack
 // map kernel stacks beneath the trampoline,
 // each surrounded by invalid guard pages.
-#define KSTACK(p, t) (TRAMPOLINE - (((((p) - proc) * NTHREAD) + ((t) - (p)->threads) + 1)* 2*PGSIZE))
+#define KSTACK(p) (TRAMPOLINE - (((p) - proc)+1)* 2*PGSIZE)
 #define ARR_END(a) (&((a)[(sizeof((a)) / sizeof((a)[0]))]))
 
 struct cpu cpus[NCPU];
@@ -47,14 +47,12 @@ proc_mapstacks(pagetable_t kpgtbl) {
   struct proc *p;
   
   for(p = proc; p < &proc[NPROC]; p++) {
+    // THREADS: allocate kstacks, only the thread with index 0
     char *pa = kalloc();
     if(pa == 0)
       panic("kalloc");
-    // THREADS: allocate kstacks
-    for (struct thread *t = p->threads; t < ARR_END(p->threads); ++t) {
-      uint64 va = KSTACK(p, t);
-      kvmmap(kpgtbl, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
-    }
+    uint64 va = KSTACK(p);
+    kvmmap(kpgtbl, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
   }
 }
 
@@ -68,9 +66,10 @@ procinit(void)
   initlock(&wait_lock, "wait_lock");
   for(p = proc; p < &proc[NPROC]; p++) {
     initlock(&p->lock, "proc");
-    // THREADS: proc-init kstack
+    // THREADS: proc-init kstack, only the thread with index 0
+    p->thread0 = &p->threads[0];
+    p->thread0->kstack = KSTACK(p);
     for (struct thread *t = p->threads; t < ARR_END(p->threads); ++t) {
-      t->kstack = KSTACK(p, t);
       t->process = p;
       initlock(&t->lock, "thread");
     }

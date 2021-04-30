@@ -166,6 +166,7 @@ struct proc {
   char name[16];               // Process name (debugging)
 
   struct thread threads[NTHREAD];
+  struct thread *thread0;
   
   uint pending_signals;
   uint signal_mask;         // specifies the signals which are blocked for this process
