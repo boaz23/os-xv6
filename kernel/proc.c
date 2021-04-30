@@ -160,7 +160,7 @@ found:
   p->state = P_USED;
 
   // THREADS: allocproc: init thread
-  t0 = &p->threads[0];
+  t0 = p->thread0;
   t0->tid = alloctid(p);
   t0->state = T_USED;
 
@@ -313,13 +313,13 @@ userinit(void)
 
   // THREADS: userinit: trapframe
   // prepare for the very first "return" from kernel to user.
-  p->threads[0].trapframe->epc = 0;      // user program counter
-  p->threads[0].trapframe->sp = PGSIZE;  // user stack pointer
+  p->thread0->trapframe->epc = 0;      // user program counter
+  p->thread0->trapframe->sp = PGSIZE;  // user stack pointer
 
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
 
-  p->threads[0].state = T_RUNNABLE;
+  p->thread0->state = T_RUNNABLE;
   p->state = P_SCHEDULABLE;
 
   release(&p->lock);
@@ -374,11 +374,11 @@ fork(void)
 
   // THREADS: fork: trapframe
   // copy saved user registers.
-  *(np->threads[0].trapframe) = *(t->trapframe);
+  *(np->thread0->trapframe) = *(t->trapframe);
 
   // THREADS: fork: return value
   // Cause fork to return 0 in the child.
-  np->threads[0].trapframe->a0 = 0;
+  np->thread0->trapframe->a0 = 0;
 
   // signal info
   np->signal_mask = p->signal_mask;
@@ -395,7 +395,7 @@ fork(void)
 
   safestrcpy(np->name, p->name, sizeof(p->name));
   // THREADS: fork: name
-  safestrcpy(np->threads[0].name, t->name, sizeof(t->name));
+  safestrcpy(np->thread0->name, t->name, sizeof(t->name));
 
   pid = np->pid;
 
@@ -406,9 +406,9 @@ fork(void)
   release(&wait_lock);
 
   // THREADS: fork: thread state
-  acquire(&np->threads[0].lock);
-  np->threads[0].state = T_RUNNABLE;  
-  release(&np->threads[0].lock);
+  acquire(&np->thread0->lock);
+  np->thread0->state = T_RUNNABLE;  
+  release(&np->thread0->lock);
 
   acquire(&np->lock);
   // THREADS: fork: process state
