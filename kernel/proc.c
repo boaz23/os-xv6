@@ -700,6 +700,12 @@ wakeup(void *chan)
 
   for(p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock);
+    if (p->state != P_SCHEDULABLE) {
+      release(&p->lock);
+      continue;
+    }
+    release(&p->lock);
+    
     for (t = p->threads; t < ARR_END(p->threads); ++t) {
       if(t != mythread()){
         acquire(&t->lock);
@@ -709,7 +715,6 @@ wakeup(void *chan)
         release(&t->lock);
       }
     }
-    release(&p->lock);
   }
 }
 
