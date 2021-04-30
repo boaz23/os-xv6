@@ -481,6 +481,9 @@ exit(int status)
 
   release(&wait_lock);
 
+  // release process lock because sched expects it to be released
+  release(&p->lock);
+
   // Jump into the scheduler, never to return.
   sched();
   panic("zombie exit");
@@ -559,25 +562,28 @@ scheduler(void)
 
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
-      if(p->state == P_SCHEDULABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        for (t = p->threads; t < ARR_END(p->threads); ++t) {
-          acquire(&t->lock);
-          if(t->state == T_RUNNABLE){
-            t->state = T_RUNNING;
-            c->thread = t;
-            swtch(&c->context, &t->context);
-
-            // Process is done running for now.
-            // It should have changed its p->state before coming back.
-            c->thread = 0;
-          }
-          release(&t->lock);
-        }
+      if (p->state != P_SCHEDULABLE) {
+        release(&p->lock);
+        continue;
       }
       release(&p->lock);
+      
+      // Switch to chosen process.  It is the process's job
+      // to release its lock and then reacquire it
+      // before jumping back to us.
+      for (t = p->threads; t < ARR_END(p->threads); ++t) {
+        acquire(&t->lock);
+        if(t->state == T_RUNNABLE){
+          t->state = T_RUNNING;
+          c->thread = t;
+          swtch(&c->context, &t->context);
+
+          // Process is done running for now.
+          // It should have changed its p->state before coming back.
+          c->thread = 0;
+        }
+        release(&t->lock);
+      }
     }
   }
 }
@@ -596,13 +602,11 @@ sched(void)
   int intena;
   struct thread *t = mythread();
   struct proc *p = t->process;
-
-  if(!holding(&p->lock))
-    panic("sched p->lock");
+  
+  // THREADS: we now hold the lock of the thread
   if(!holding(&t->lock))
     panic("sched t->lock");
-  // THREADS: we now hold 2 locks, so the depth of the push_off() has to be 2
-  if(mycpu()->noff != 2)
+  if(mycpu()->noff != 1)
     panic("sched locks");
   if(t->state == T_RUNNING) {
     panicf(
@@ -625,21 +629,10 @@ void
 yield(void)
 {
   struct thread *t = mythread();
-  // needs to lock p->lock because sched() requires it
-  struct proc *p = t->process;
-  acquire(&p->lock);
   acquire(&t->lock);
   t->state = T_RUNNABLE; 
   sched();
   release(&t->lock);
-  release(&p->lock);
-}
-
-void
-yield_no_locks(struct thread *t)
-{
-  t->state = T_RUNNABLE;
-  sched();
 }
 
 // A fork child's very first scheduling by scheduler()
@@ -650,9 +643,8 @@ forkret(void)
   static int first = 1;
   struct thread *t = mythread();
 
-  // Still holding locks from scheduler.
+  // Still holding lock from scheduler.
   release(&t->lock);
-  release(&t->process->lock);
 
   if (first) {
     // File system initialization must be run in the context of a
@@ -672,8 +664,6 @@ void
 sleep(void *chan, struct spinlock *lk)
 {
   struct thread *t = mythread();
-  // needed in order to lock p->lock because sched() requires it
-  struct proc *p = t->process;
   
   // Must acquire p->lock in order to
   // change p->state and then call sched.
@@ -681,8 +671,7 @@ sleep(void *chan, struct spinlock *lk)
   // guaranteed that we won't miss any wakeup
   // (wakeup locks p->lock),
   // so it's okay to release lk.
-
-  acquire(&p->lock);  //DOC: sleeplock1
+  
   acquire(&t->lock);  //DOC: sleeplock1
   release(lk);
 
@@ -697,7 +686,6 @@ sleep(void *chan, struct spinlock *lk)
 
   // Reacquire original lock.
   release(&t->lock);
-  release(&p->lock);
   acquire(lk);
 }
 
@@ -986,7 +974,9 @@ proc_handle_special_signals(struct thread *t)
       printf("%d killed\n", p->pid);
       #endif
       
+      acquire(&t->lock);
       t->killed = 1;
+      release(&t->lock);
 
       // no other special signal matters.
       // see the note in trap.c on why not exit.
@@ -1011,7 +1001,9 @@ proc_handle_special_signals(struct thread *t)
       #endif
 
       // yield back to scheduler until continued.
-      yield_no_locks(t);
+      release(&p->lock);
+      yield();
+      acquire(&p->lock);
     }
     else if (continued) {
       // just continued, nothing to do

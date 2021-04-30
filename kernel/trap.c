@@ -160,11 +160,9 @@ handle_proc_signals(struct thread *t)
 {
   struct proc *p = t->process;
   acquire(&p->lock);
-  acquire(&t->lock);
 
   handle_proc_signals_core(t);
-
-  release(&t->lock);
+  
   release(&p->lock);
 }
 
