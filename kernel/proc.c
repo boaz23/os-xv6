@@ -205,6 +205,9 @@ found:
   return p;
 }
 
+// THREADS-TODO: when allocating a thread, allocate a page for its kstack.
+//               therefore, it also needs to be freed,
+//               except for the thread with index 0 because its kstack is allocated statically.
 // free a proc structure and the data hanging from it,
 // including user pages.
 // p->lock must be held.
