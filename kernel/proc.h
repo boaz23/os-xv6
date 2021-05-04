@@ -111,10 +111,12 @@ struct thread {
   int tid;                     // Thread ID
 
   // THREAD: kstack is now void*
-  void* kstack;                 // Virtual address of kernel stack
+  void* kstack;                  // Virtual address of kernel stack
   struct trapframe *trapframe;   // data page for trampoline.S
   struct context context;        // swtch() here to run process
   char name[16];                 // Thread name (debugging)
+
+  int waiting_on_me_count;       // how many threads are currently joining this thread, see kthread_join for notes
 
   // TODO: signals and multi-threading
 

@@ -30,6 +30,7 @@ extern void forkret(void);
 static void freeproc(struct proc *p);
 static void freethread(struct thread *t);
 void exit_core();
+void wakeup_proc_threads(struct proc *p, void *chan);
 
 extern char trampoline[]; // trampoline.S
 
@@ -120,6 +121,24 @@ mythread(void) {
   return t;
 }
 
+// THREAD: find unused thread
+// finds an unused thread for the specified process.
+// returns a pointer to it with it's lock held.
+// assumes that the process lock is held.
+struct thread *
+proc_find_thread_by_id(struct proc *p, int tid)
+{
+  struct thread *t;
+  for(t = p->threads; t < ARR_END(p->threads); t++) {
+    acquire(&t->lock);
+    if(t->tid == tid && t->state != T_UNUSED) {
+      return t;
+    }
+    release(&t->lock);
+  }
+  return 0;
+}
+
 // THREAD: allocate thread id
 // assumes that the process lock is held.
 int
@@ -136,6 +155,7 @@ thread_init(struct proc *p, struct thread *t)
 {
   t->tid = alloctid(p);
   t->state = T_USED;
+  t->waiting_on_me_count = 0;
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
@@ -144,7 +164,7 @@ thread_init(struct proc *p, struct thread *t)
   t->context.sp = (uint64)t->kstack + PGSIZE;
 }
 
-// THREAD: allocate thread (with kstack)
+// THREADS: allocate thread (with kstack)
 // assumes that the process lock and the thread locks are held.
 // returns non-zero when successful.
 int
@@ -164,7 +184,7 @@ allocthread_core(struct proc *p, struct thread *t)
   return 1;
 }
 
-// THREAD: find unused thread
+// THREADS: find unused thread
 // finds an unused thread for the specified process.
 // returns a pointer to it with it's lock held.
 // assumes that the process lock is held.
@@ -183,7 +203,7 @@ proc_find_unused_thread(struct proc *p)
   return 0;
 }
 
-// THREAD: allocate thread
+// THREADS: allocate thread
 // assumes that the process lock is held.
 struct thread *
 allocthread(struct proc *p)
@@ -293,6 +313,7 @@ freethread(struct thread *t)
   t->tid = 0;
   t->xstate = 0;
   t->trapframe = 0;
+  t->waiting_on_me_count = 0;
 }
 
 // THREADS-TODO: when allocating a thread, allocate a page for its kstack.
@@ -581,6 +602,7 @@ kthread_exit(int status)
     exit_core();
   }
   else {
+    wakeup_proc_threads(p, t);
     sched();
     panic("thread exited returned from scheduler.");
   }
@@ -657,6 +679,54 @@ exit(int status)
   release(&p->lock);
 
   proc_kill_all_threads(p);
+}
+
+// joins the current thread with the thread with id <thread_id>
+// NOTE: multiple threads may be joining the thread with id <thread_id> at the same time.
+// to reslove the issue, we added a counter to the the thread struct so that we free
+// the thread only when all joining threads have joined him and got his exit status.
+int
+kthread_join(int thread_id, uint64 up_status)
+{
+  int res = 0;
+  struct thread *t_joiner = mythread();
+  struct proc *p = t_joiner->process;
+  struct thread *t_joinee = proc_find_thread_by_id(p, thread_id);
+  if (!t_joinee) {
+    return -1;
+  }
+  
+  t_joinee->waiting_on_me_count++;
+  while (1) {
+    if (t_joinee->state == T_ZOMBIE) {
+      t_joinee->waiting_on_me_count--;
+      if (up_status) {
+        res = copyout(
+          p->pagetable,
+          up_status,
+          (char *)&t_joinee->xstate,
+          sizeof(t_joinee->xstate)
+        );
+        if (res < 0) {
+          release(&t_joinee->lock);
+          return -1;
+        }
+      }
+      if (t_joinee->waiting_on_me_count == 0) {
+        freethread(t_joinee);
+      }
+      release(&t_joinee->lock);
+      return 0;
+    }
+
+    if (THREAD_IS_KILLED(t_joiner)) {
+      t_joinee->waiting_on_me_count--;
+      release(&t_joinee->lock);
+      return -1;
+    }
+
+    sleep(t_joinee, &t_joinee->lock);
+  }
 }
 
 // Wait for a child process to exit and return its pid.
@@ -859,6 +929,22 @@ sleep(void *chan, struct spinlock *lk)
   acquire(lk);
 }
 
+void
+wakeup_proc_threads(struct proc *p, void *chan)
+{
+  struct thread *t;
+  struct thread *t_current = mythread();
+  for (t = p->threads; t < ARR_END(p->threads); ++t) {
+    if(t != t_current){
+      acquire(&t->lock);
+      if(t->state == T_SLEEPING && t->chan == chan){
+        t->state = T_RUNNABLE;
+      }
+      release(&t->lock);
+    }
+  }
+}
+
 // Wake up all processes sleeping on chan.
 // Must be called without any p->lock.
 // THREADS: wakeup
@@ -866,7 +952,6 @@ void
 wakeup(void *chan)
 {
   struct proc *p;
-  struct thread *t;
 
   for(p = proc; p < &proc[NPROC]; p++) {
     acquire(&p->lock);
@@ -875,16 +960,8 @@ wakeup(void *chan)
       continue;
     }
     release(&p->lock);
-    
-    for (t = p->threads; t < ARR_END(p->threads); ++t) {
-      if(t != mythread()){
-        acquire(&t->lock);
-        if(t->state == T_SLEEPING && t->chan == chan){
-          t->state = T_RUNNABLE;
-        }
-        release(&t->lock);
-      }
-    }
+
+    wakeup_proc_threads(p, chan);
   }
 }
 
