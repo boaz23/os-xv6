@@ -719,20 +719,17 @@ exit(int status)
   proc_kill_all_threads(p);
 }
 
-// joins the current thread with the thread with id <thread_id>
-// NOTE: multiple threads may be joining the thread with id <thread_id> at the same time.
+// joins the current thread with the specified thread.
+// assumes the specified thread's lock is held.
+// NOTE: multiple threads may be joining the thread at the same time.
 // to reslove the issue, we added a counter to the the thread struct so that we free
 // the thread only when all joining threads have joined him and got his exit status.
 int
-kthread_join(int thread_id, uint64 up_status)
+kthread_join_core(struct thread *t_joinee, int thread_id, uint64 up_status, int force)
 {
   int res = 0;
   struct thread *t_joiner = mythread();
   struct proc *p = t_joiner->process;
-  struct thread *t_joinee = proc_find_thread_by_id(p, thread_id);
-  if (!t_joinee) {
-    return -1;
-  }
   
   t_joinee->waiting_on_me_count++;
   while (1) {
@@ -748,10 +745,10 @@ kthread_join(int thread_id, uint64 up_status)
     }
 
     // if this thread was killed, just quit and return an error.
-    if (THREAD_IS_KILLED(t_joiner)) {
+    if (!force && THREAD_IS_KILLED(t_joiner)) {
       t_joinee->waiting_on_me_count--;
       release(&t_joinee->lock);
-      return -1;
+      return -2;
     }
 
     // check whether the other thread exited
@@ -784,6 +781,23 @@ kthread_join(int thread_id, uint64 up_status)
     // sleep on the thread we're joining into with it's lock as lk
     sleep(t_joinee, &t_joinee->lock);
   }
+}
+
+// joins the current thread with the thread with id <thread_id>
+int
+kthread_join(int thread_id, uint64 up_status)
+{
+  int res;
+  struct thread *t_joinee = proc_find_thread_by_id(myproc(), thread_id);
+  if (!t_joinee) {
+    return -1;
+  }
+  
+  res = kthread_join_core(t_joinee, thread_id, up_status, 0);
+  if (res < 0) {
+    res = -1;
+  }
+  return res;
 }
 
 // Wait for a child process to exit and return its pid.
