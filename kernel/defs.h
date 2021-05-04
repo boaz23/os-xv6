@@ -118,7 +118,7 @@ void            proc_handle_special_signals(struct thread *t);
 int             proc_find_custom_signal_handler(struct proc *p, struct sigaction *user_action, int *p_signum);
 
 // THREADS:
-void            kthread_exit(struct thread *t, int status);
+void            kthread_exit(int status);
 
 // swtch.S
 void            swtch(struct context*, struct context*);

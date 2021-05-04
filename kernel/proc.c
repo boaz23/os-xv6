@@ -482,8 +482,9 @@ proc_kill_core(struct proc *p, int status)
 
 // THREADS: kthread_exit
 void
-kthread_exit(struct thread *t, int status)
+kthread_exit(int status)
 {
+  struct thread *t = mythread();
   struct proc *p = t->process;
   int should_exit = 0;
   
