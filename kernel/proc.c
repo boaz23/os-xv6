@@ -736,6 +736,25 @@ kthread_join(int thread_id, uint64 up_status)
   
   t_joinee->waiting_on_me_count++;
   while (1) {
+    // if the thread this thread is currently joining in to some how got freed,
+    // or some other thread managed to allocate if afterwards, 
+    // just quit and return an error.
+    // this can happen when the process is collapsing.
+    if (t_joinee->state == T_UNUSED || t_joinee->tid != thread_id) {
+      // do not decrement the waiting_on_me counter because the thread has completely changed
+      // since we originally entered the loop.
+      release(&t_joinee->lock);
+      return -1;
+    }
+
+    // if this thread was killed, just quit and return an error.
+    if (THREAD_IS_KILLED(t_joiner)) {
+      t_joinee->waiting_on_me_count--;
+      release(&t_joinee->lock);
+      return -1;
+    }
+
+    // check whether the other thread exited
     if (t_joinee->state == T_ZOMBIE) {
       // we are always returning in this branch, so decrement the counter here for less bugs (in case we forget)
       t_joinee->waiting_on_me_count--;
@@ -760,13 +779,6 @@ kthread_join(int thread_id, uint64 up_status)
       }
       release(&t_joinee->lock);
       return 0;
-    }
-
-    // if this thread was killed, just quit and return an error
-    if (THREAD_IS_KILLED(t_joiner)) {
-      t_joinee->waiting_on_me_count--;
-      release(&t_joinee->lock);
-      return -1;
     }
 
     // sleep on the thread we're joining into with it's lock as lk
