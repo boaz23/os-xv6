@@ -139,7 +139,7 @@ proc_find_thread_by_id(struct proc *p, int tid)
   return 0;
 }
 
-// THREAD: allocate thread id
+// THREADS: allocate thread id
 // assumes that the process lock is held.
 int
 alloctid(struct proc* proc)
@@ -147,9 +147,17 @@ alloctid(struct proc* proc)
   return proc->next_tid++;
 }
 
+// THREADS: allocate thread id with lock
+int alloctid_lock(struct proc* proc)
+{
+  int tid;
+  acquire(&proc->lock);
+  tid = alloctid(proc);
+  release(&proc->lock);
+  return tid;
+}
+
 // THREAD: thread init fields
-// assumes that the process lock and the thread locks are held.
-// returns non-zero when successful.
 void
 thread_init(struct proc *p, struct thread *t)
 {
@@ -165,7 +173,7 @@ thread_init(struct proc *p, struct thread *t)
 }
 
 // THREADS: allocate thread (with kstack)
-// assumes that the process lock and the thread locks are held.
+// assumes that the thread lock is held.
 // returns non-zero when successful.
 int
 allocthread_core(struct proc *p, struct thread *t)
@@ -192,12 +200,15 @@ struct thread *
 proc_find_unused_thread(struct proc *p)
 {
   struct thread *t;
+  struct thread *t_current = mythread();
   for(t = p->threads; t < ARR_END(p->threads); t++) {
-    acquire(&t->lock);
-    if(t->state == T_UNUSED) {
-      return t;
-    } else {
-      release(&t->lock);
+    if (t != t_current) {
+      acquire(&t->lock);
+      if(t->state == T_UNUSED) {
+        return t;
+      } else {
+        release(&t->lock);
+      }
     }
   }
   return 0;
@@ -456,6 +467,33 @@ growproc(int n)
   return 0;
 }
 
+// THREADS: kthread_create
+int
+kthread_create(uint64 start_func, uint64 up_usp)
+{
+  int tid;
+  struct thread *nt;
+  struct thread *t = mythread();
+  struct proc *p = t->process;
+
+  acquire(&p->lock);
+  nt = allocthread(p);
+  if (!nt) {
+    release(&p->lock);
+    return -1;
+  }
+  release(&p->lock);
+
+  tid = nt->tid;
+  *nt->trapframe = *t->trapframe;
+  nt->trapframe->epc = start_func;
+  nt->trapframe->sp = up_usp + STACK_SIZE - 16;
+  nt->state = T_RUNNABLE;
+
+  release(&nt->lock);
+  return tid;
+}
+
 // Create a new process, copying the parent.
 // Sets up child kernel stack to return as if from fork() system call.
 int
@@ -699,7 +737,10 @@ kthread_join(int thread_id, uint64 up_status)
   t_joinee->waiting_on_me_count++;
   while (1) {
     if (t_joinee->state == T_ZOMBIE) {
+      // we are always returning in this branch, so decrement the counter here for less bugs (in case we forget)
       t_joinee->waiting_on_me_count--;
+
+      // copy the exit status
       if (up_status) {
         res = copyout(
           p->pagetable,
@@ -712,6 +753,8 @@ kthread_join(int thread_id, uint64 up_status)
           return -1;
         }
       }
+
+      // free the thread only if the current thread is the last one
       if (t_joinee->waiting_on_me_count == 0) {
         freethread(t_joinee);
       }
@@ -719,12 +762,14 @@ kthread_join(int thread_id, uint64 up_status)
       return 0;
     }
 
+    // if this thread was killed, just quit and return an error
     if (THREAD_IS_KILLED(t_joiner)) {
       t_joinee->waiting_on_me_count--;
       release(&t_joinee->lock);
       return -1;
     }
 
+    // sleep on the thread we're joining into with it's lock as lk
     sleep(t_joinee, &t_joinee->lock);
   }
 }
