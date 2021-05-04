@@ -96,7 +96,7 @@ struct trapframe {
 //   * sysproc.c
 //   * trap.c
 
-enum thread_state { T_UNUSED, T_USED, T_SLEEPING, T_RUNNABLE, T_RUNNING, T_FREE };
+enum thread_state { T_UNUSED, T_USED, T_SLEEPING, T_RUNNABLE, T_RUNNING, T_ZOMBIE };
 
 struct thread {
   struct proc *process; // The process this threads belongs to

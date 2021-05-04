@@ -500,7 +500,7 @@ kthread_exit(int status)
 
   acquire(&t->lock);
   t->xstate = status;
-  t->state = T_FREE;
+  t->state = T_ZOMBIE;
 
   if (should_exit) {
     release(&t->lock);
@@ -878,7 +878,7 @@ static char *threads_states_names[] = {
   [T_SLEEPING] "sleeping",
   [T_RUNNABLE] "runnable",
   [T_RUNNING]  "running",
-  [T_FREE]     "free",
+  [T_ZOMBIE]   "zombie",
 };
 
 // Print a process listing to console.  For debugging.
