@@ -8,9 +8,10 @@
 #include "signal.h"
 
 // THREADS: only the thread with index 0 has this kstack
+// THREADS: cast to void* because kstack in thread is now void*
 // map kernel stacks beneath the trampoline,
 // each surrounded by invalid guard pages.
-#define KSTACK(p) (TRAMPOLINE - (((p) - proc)+1)* 2*PGSIZE)
+#define KSTACK(p) ((void *)(TRAMPOLINE - (((p) - proc)+1)* 2*PGSIZE))
 #define ARR_END(a) (&((a)[(sizeof((a)) / sizeof((a)[0]))]))
 
 struct cpu cpus[NCPU];
@@ -27,6 +28,7 @@ struct spinlock pid_lock;
 
 extern void forkret(void);
 static void freeproc(struct proc *p);
+static void freethread(struct thread *t);
 void exit_core();
 
 extern char trampoline[]; // trampoline.S
@@ -49,11 +51,13 @@ proc_mapstacks(pagetable_t kpgtbl) {
   
   for(p = proc; p < &proc[NPROC]; p++) {
     // THREADS: allocate kstacks, only the thread with index 0
+    void* va;
     char *pa = kalloc();
     if(pa == 0)
       panic("kalloc");
-    uint64 va = KSTACK(p);
-    kvmmap(kpgtbl, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+    va = KSTACK(p);
+    // THREAD: cast of kstack to uint64
+    kvmmap(kpgtbl, (uint64)va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
   }
 }
 
@@ -116,6 +120,86 @@ mythread(void) {
   return t;
 }
 
+// THREAD: allocate thread id
+// assumes that the process lock is held.
+int
+alloctid(struct proc* proc)
+{
+  return proc->next_tid++;
+}
+
+// THREAD: thread init fields
+// assumes that the process lock and the thread locks are held.
+// returns non-zero when successful.
+void
+thread_init(struct proc *p, struct thread *t)
+{
+  t->tid = alloctid(p);
+  t->state = T_USED;
+
+  // Set up new context to start executing at forkret,
+  // which returns to user space.
+  memset(&t->context, 0, sizeof(t->context));
+  t->context.ra = (uint64)forkret;
+  t->context.sp = (uint64)t->kstack + PGSIZE;
+}
+
+// THREAD: allocate thread (with kstack)
+// assumes that the process lock and the thread locks are held.
+// returns non-zero when successful.
+int
+allocthread_core(struct proc *p, struct thread *t)
+{
+  void *kstack;
+  if (t != p->thread0) {
+    kstack = kalloc();
+    if (!kstack) {
+      freethread(t);
+      return 0;
+    }
+    t->kstack = kstack;
+  }
+
+  thread_init(p, t);
+  return 1;
+}
+
+// THREAD: find unused thread
+// finds an unused thread for the specified process.
+// returns a pointer to it with it's lock held.
+// assumes that the process lock is held.
+struct thread *
+proc_find_unused_thread(struct proc *p)
+{
+  struct thread *t;
+  for(t = p->threads; t < ARR_END(p->threads); t++) {
+    acquire(&t->lock);
+    if(p->state == P_UNUSED) {
+      return t;
+    } else {
+      release(&t->lock);
+    }
+  }
+  return 0;
+}
+
+// THREAD: allocate thread
+// assumes that the process lock is held.
+struct thread *
+allocthread(struct proc *p)
+{
+  struct thread *t = proc_find_unused_thread(p);
+  if (!t) {
+    return 0;
+  }
+  if (!allocthread_core(p, t)) {
+    freethread(t);
+    release(&t->lock);
+    return 0;
+  }
+  return t;
+}
+
 int
 allocpid() {
   int pid;
@@ -126,13 +210,6 @@ allocpid() {
   release(&pid_lock);
 
   return pid;
-}
-
-// This function doesn't require lock since p->lock is held.
-int
-alloctid(struct proc* proc)
-{
-  return proc->next_tid++;
 }
 
 // Look in the process table for an UNUSED proc.
@@ -161,11 +238,6 @@ found:
   p->state = P_USED;
   p->killed = 0;
   p->threads_alive_count = 1;
-
-  // THREADS: allocproc: init thread
-  t0 = p->thread0;
-  t0->tid = alloctid(p);
-  t0->state = T_USED;
 
   // Allocate a trapframe page.
   if((p->kpage_trapframes = kalloc()) == 0){
@@ -199,19 +271,21 @@ found:
     p->signal_handles_mask[i] = 0;
   }
 
-  // Set up new context to start executing at forkret,
-  // which returns to user space.
-  memset(&t0->context, 0, sizeof(t0->context));
-  t0->context.ra = (uint64)forkret;
-  t0->context.sp = t0->kstack + PGSIZE;
+  // THREADS: allocproc: init thread
+  t0 = p->thread0;
+  thread_init(p, t0);
 
   return p;
 }
 
 // THREADS-TODO: think about when to free a thread and how should it's exit status be stored.
-void
+static void
 freethread(struct thread *t)
 {
+  // THREAD: free the allocated kstack
+  if (t != t->process->thread0 && t->kstack) {
+    kfree(t->kstack);
+  }
   t->chan = 0;
   t->killed = 0;
   t->name[0] = 0;

@@ -110,7 +110,8 @@ struct thread {
   int xstate;                  // Exit status (return on join)
   int tid;                     // Thread ID
 
-  uint64 kstack;                 // Virtual address of kernel stack
+  // THREAD: kstack is now void*
+  void* kstack;                 // Virtual address of kernel stack
   struct trapframe *trapframe;   // data page for trampoline.S
   struct context context;        // swtch() here to run process
   char name[16];                 // Thread name (debugging)
