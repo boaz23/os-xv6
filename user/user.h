@@ -1,6 +1,5 @@
 #include "kernel/signal.h"
-
-#define MAX_STACK_SIZE 4000
+#include "kernel/threads.h"
 
 struct stat;
 struct rtcdate;
