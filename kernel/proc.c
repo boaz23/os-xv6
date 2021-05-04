@@ -174,7 +174,7 @@ proc_find_unused_thread(struct proc *p)
   struct thread *t;
   for(t = p->threads; t < ARR_END(p->threads); t++) {
     acquire(&t->lock);
-    if(p->state == P_UNUSED) {
+    if(t->state == T_UNUSED) {
       return t;
     } else {
       release(&t->lock);
