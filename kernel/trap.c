@@ -39,6 +39,7 @@ void
 usertrap(void)
 {
   int which_dev = 0;
+  struct thread *t;
 
   if((r_sstatus() & SSTATUS_SPP) != 0)
     panic("usertrap: not from user mode");
@@ -49,14 +50,14 @@ usertrap(void)
 
   // THREADS: The thread hold the trapframe therefore
   //          proc is not needed here
-  struct thread *t = mythread();
+  t = mythread();
   
   // save user program counter.
   t->trapframe->epc = r_sepc();
   
   if(r_scause() == 8){
     // system call
-
+    
     // THREADS-TODO: covert to multi-threads
     if(THREAD_IS_KILLED(t))
       kthread_exit(-1);
@@ -75,10 +76,9 @@ usertrap(void)
   } else {
     printf("usertrap(): unexpected scause %p pid=%d tid=%d\n", r_scause(), t->process->pid, t->tid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
-    t->process->killed = 1;
-    t->killed = 1;
+    exit(-1);
   }
-
+  
   if(THREAD_IS_KILLED(t))
     kthread_exit(-1);
 

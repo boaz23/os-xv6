@@ -172,11 +172,9 @@ thread_init(struct proc *p, struct thread *t)
   t->context.sp = (uint64)t->kstack + PGSIZE;
 }
 
-// THREADS: allocate thread (with kstack)
-// assumes that the thread lock is held.
-// returns non-zero when successful.
+// THREADS: allocate kernel stack
 int
-allocthread_core(struct proc *p, struct thread *t)
+alloc_kstack(struct proc *p, struct thread *t)
 {
   void *kstack;
   if (t != p->thread0) {
@@ -185,10 +183,10 @@ allocthread_core(struct proc *p, struct thread *t)
       freethread(t);
       return 0;
     }
+
     t->kstack = kstack;
   }
 
-  thread_init(p, t);
   return 1;
 }
 
@@ -206,7 +204,8 @@ proc_find_unused_thread(struct proc *p)
       acquire(&t->lock);
       if(t->state == T_UNUSED) {
         return t;
-      } else {
+      }
+      else {
         release(&t->lock);
       }
     }
@@ -223,11 +222,12 @@ allocthread(struct proc *p)
   if (!t) {
     return 0;
   }
-  if (!allocthread_core(p, t)) {
+  if (!alloc_kstack(p, t)) {
     freethread(t);
     release(&t->lock);
     return 0;
   }
+  thread_init(p, t);
   return t;
 }
 
@@ -476,12 +476,22 @@ kthread_create(uint64 start_func, uint64 up_usp)
   struct thread *t = mythread();
   struct proc *p = t->process;
 
+  if (!up_usp) {
+    // invalid user stack pointer
+    return -1;
+  }
+
   acquire(&p->lock);
+  if (p->killed) {
+    release(&p->lock);
+    return -1;
+  }
   nt = allocthread(p);
   if (!nt) {
     release(&p->lock);
     return -1;
   }
+  p->threads_alive_count++;
   release(&p->lock);
 
   tid = nt->tid;
@@ -598,12 +608,20 @@ thread_kill(struct thread *t)
 }
 
 void
-proc_kill_all_threads(struct proc *p)
+proc_kill_all_threads_except(struct proc *p, struct thread *t_exclude)
 {
   struct thread *t;
   for (t = p->threads; t < ARR_END(p->threads); ++t) {
-    thread_kill(t);
+    if (t != t_exclude) {
+      thread_kill(t);
+    }
   }
+}
+
+void
+proc_kill_all_threads(struct proc *p)
+{
+  proc_kill_all_threads_except(p, 0);
 }
 
 void
@@ -719,6 +737,15 @@ exit(int status)
   proc_kill_all_threads(p);
 }
 
+void
+exit_no_lock(struct proc *p, int status)
+{
+  if (!p->killed) {
+    proc_kill_core(p, -1);
+    proc_kill_all_threads(p);
+  }
+}
+
 // joins the current thread with the specified thread.
 // assumes the specified thread's lock is held.
 // NOTE: multiple threads may be joining the thread at the same time.
@@ -730,6 +757,10 @@ kthread_join_core(struct thread *t_joinee, int thread_id, uint64 up_status, int 
   int res = 0;
   struct thread *t_joiner = mythread();
   struct proc *p = t_joiner->process;
+  if (t_joiner == t_joinee) {
+    // the thread is trying to join himself.
+    return -1;
+  }
   
   t_joinee->waiting_on_me_count++;
   while (1) {
@@ -788,7 +819,23 @@ int
 kthread_join(int thread_id, uint64 up_status)
 {
   int res;
-  struct thread *t_joinee = proc_find_thread_by_id(myproc(), thread_id);
+  struct thread *t_joinee;
+  struct thread *t_joiner;
+  struct proc *p;
+  
+  if (thread_id < 0) {
+    // invalid thread id
+    return -1;
+  }
+
+  t_joiner = mythread();
+  if (t_joiner->tid == thread_id) {
+    // the thread is trying to join himself.
+    return -1;
+  }
+
+  p = t_joiner->process;
+  t_joinee = proc_find_thread_by_id(p, thread_id);
   if (!t_joinee) {
     return -1;
   }
@@ -1298,10 +1345,7 @@ proc_handle_special_signals(struct thread *t)
       printf("%d killed\n", p->pid);
       #endif
 
-      if (!p->killed) {
-        proc_kill_core(p, -1);
-        proc_kill_all_threads(p);
-      }
+      exit_no_lock(p, -1);
 
       // no other special signal matters.
       // see the note in trap.c on why not exit.
