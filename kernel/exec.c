@@ -25,6 +25,14 @@ exec(char *path, char **argv)
   // stays my proc 
   struct proc *p = myproc();
 
+  // THREADS: exec early bail if process already killed
+  acquire(&p->lock);
+  if (p->killed) {
+    release(&p->lock);
+    return -1;
+  }
+  release(&p->lock);
+
   begin_op();
   
   if((ip = namei(path)) == 0){
