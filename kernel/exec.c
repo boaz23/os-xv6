@@ -39,11 +39,6 @@ exec(char *path, char **argv)
   if(elf.magic != ELF_MAGIC)
     goto bad;
 
-  if (proc_collapse_all_other_threads() < 0) {
-    // this thread isn't the first to kill the process
-    goto bad;
-  }
-
   if((pagetable = proc_pagetable(p)) == 0)
     goto bad;
 
@@ -108,6 +103,12 @@ exec(char *path, char **argv)
   if(copyout(pagetable, sp, (char *)ustack, (argc+1)*sizeof(uint64)) < 0)
     goto bad;
 
+  // THREADS: exec all killing other threads
+  if (proc_collapse_all_other_threads() < 0) {
+    // this thread isn't the first to kill the process
+    goto bad;
+  }
+
   // arguments to user main(argc, argv)
   // argc is returned via the system call return
   // value, which goes in a0.
@@ -118,7 +119,7 @@ exec(char *path, char **argv)
     if(*s == '/')
       last = s+1;
   safestrcpy(p->name, last, sizeof(p->name));
-    
+
   // Commit to the user image.
   oldpagetable = p->pagetable;
   p->pagetable = pagetable;
