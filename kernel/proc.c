@@ -264,6 +264,7 @@ found:
   p->pid = allocpid();
   p->state = P_USED;
   p->killed = 0;
+  p->next_tid = 1;
   p->threads_alive_count = 1;
 
   // Allocate a trapframe page.
@@ -350,7 +351,7 @@ freeproc(struct proc *p)
   p->xstate = 0;
   p->state = P_UNUSED;
   p->freezed = 0;
-  p->next_tid = 0;
+  p->next_tid = 1;
   p->threads_alive_count = 0;
 }
 
@@ -433,7 +434,7 @@ userinit(void)
 
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
-
+  
   p->thread0->state = T_RUNNABLE;
   p->state = P_SCHEDULABLE;
 
@@ -556,7 +557,7 @@ fork(void)
   acquire(&wait_lock);
   np->parent = p;
   release(&wait_lock);
-
+  
   // THREADS: fork: thread state
   acquire(&np->thread0->lock);
   np->thread0->state = T_RUNNABLE;  
@@ -647,7 +648,6 @@ kthread_exit(int status)
 
   acquire(&t->lock);
   t->xstate = status;
-  t->state = T_ZOMBIE;
 
   if (should_exit) {
     release(&t->lock);
@@ -655,6 +655,7 @@ kthread_exit(int status)
   }
   else {
     wakeup_proc_threads(p, t);
+    t->state = T_ZOMBIE;
     sched();
     panic("thread exited returned from scheduler.");
   }
@@ -707,7 +708,8 @@ exit_core()
   release(&p->lock);
 
   acquire(&t->lock); // required for the sched
-
+  
+  t->state = T_ZOMBIE;
   // Jump into the scheduler, never to return.
   sched();
   panic("zombie exit");
@@ -1010,9 +1012,9 @@ sched(void)
     panic("sched locks");
   if(t->state == T_RUNNING) {
     panicf(
-      "sched thread RUNNING (pid=%d, pstate=%d, pname='%s', tid=%d, tstate=%s, tname='%s')",
+      "sched thread RUNNING (pid=%d, pstate=%s, pname='%s', tid=%d, tstate=%s, tname='%s')",
       p->pid, process_states_names[p->state], p->name,
-      t->tid, threads_states_names[t->tid], t->name
+      t->tid, threads_states_names[t->state], t->name
     );
   }
   if(intr_get())

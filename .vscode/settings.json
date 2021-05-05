@@ -3,6 +3,15 @@
         "cstdio": "c",
         "cstdlib": "c",
         "type_traits": "c",
-        "sleeplock.h": "c"
+        "sleeplock.h": "c",
+        "param.h": "c",
+        "types.h": "c",
+        "stat.h": "c",
+        "user.h": "c",
+        "fs.h": "c",
+        "fcntl.h": "c",
+        "memlayout.h": "c",
+        "syscall.h": "c",
+        "riscv.h": "c"
     }
 }
