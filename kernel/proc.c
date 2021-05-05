@@ -177,13 +177,13 @@ alloc_kstack(struct proc *p, struct thread *t)
     kstack = kalloc();
     if (!kstack) {
       freethread(t);
-      return 0;
+      return -1;
     }
 
     t->kstack = kstack;
   }
 
-  return 1;
+  return 0;
 }
 
 // THREADS: find unused thread
@@ -218,8 +218,7 @@ allocthread(struct proc *p)
   if (!t) {
     return 0;
   }
-  if (!alloc_kstack(p, t)) {
-    freethread(t);
+  if (alloc_kstack(p, t) < 0) {
     release(&t->lock);
     return 0;
   }
@@ -334,10 +333,11 @@ freethread(struct thread *t)
 static void
 freeproc(struct proc *p)
 {
+  struct thread *t;
   if(p->kpage_trapframes)
     kfree(p->kpage_trapframes);
-  for(int i = 0; i < NTHREAD; i++){
-    freethread(&p->threads[i]);
+  for (t = p->threads; t < ARR_END(p->threads); t++) {
+    freethread(t);
   }
   p->backup_trapframe = 0;
   if(p->pagetable)
@@ -739,7 +739,7 @@ void
 exit_no_lock(struct proc *p, int status)
 {
   if (!p->killed) {
-    proc_kill_core(p, -1);
+    proc_kill_core(p, status);
     proc_kill_all_threads(p);
   }
 }
