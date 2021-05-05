@@ -831,7 +831,7 @@ kthread_join(int thread_id, uint64 up_status)
   struct thread *t_joiner;
   struct proc *p;
   
-  if (thread_id < 0) {
+  if (thread_id <= 0) {
     // invalid thread id
     return -1;
   }
