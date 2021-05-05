@@ -39,6 +39,11 @@ exec(char *path, char **argv)
   if(elf.magic != ELF_MAGIC)
     goto bad;
 
+  if (proc_collapse_all_other_threads() < 0) {
+    // this thread isn't the first to kill the process
+    goto bad;
+  }
+
   if((pagetable = proc_pagetable(p)) == 0)
     goto bad;
 
@@ -67,7 +72,7 @@ exec(char *path, char **argv)
 
   p = myproc();
   // THREADS: exec trapframe
-  trapframe = p->threads[0].trapframe;
+  trapframe = mythread()->trapframe;
   uint64 oldsz = p->sz;
 
   // Allocate two pages at the next page boundary.

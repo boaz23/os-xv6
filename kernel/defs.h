@@ -119,6 +119,7 @@ int             proc_find_custom_signal_handler(struct proc *p, struct sigaction
 
 // THREADS:
 void            kthread_exit(int status);
+int             proc_collapse_all_other_threads();
 
 // swtch.S
 void            swtch(struct context*, struct context*);

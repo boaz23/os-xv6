@@ -104,11 +104,7 @@ mycpu(void) {
 // Return the current struct proc *, or zero if none.
 struct proc*
 myproc(void) {
-  push_off();
-  struct cpu *c = mycpu();
-  struct proc *p = c->thread->process;
-  pop_off();
-  return p;
+  return mythread()->process;
 }
 
 // Return the current struct thread *, or zero if none.
@@ -751,14 +747,24 @@ exit_no_lock(struct proc *p, int status)
 // NOTE: multiple threads may be joining the thread at the same time.
 // to reslove the issue, we added a counter to the the thread struct so that we free
 // the thread only when all joining threads have joined him and got his exit status.
+// force: Determines whether the function respects if the thread running this function is killed or not.
+//        If force is non-zero, the function doesn't return when the joining thread
+//        (the thread running the function) is killed.
 int
 kthread_join_core(struct thread *t_joinee, int thread_id, uint64 up_status, int force)
 {
   int res = 0;
   struct thread *t_joiner = mythread();
   struct proc *p = t_joiner->process;
+
   if (t_joiner == t_joinee) {
     // the thread is trying to join himself.
+    release(&t_joinee->lock);
+    return -1;
+  }
+  if (t_joinee->state == T_UNUSED) {
+    // cannot join an unused thread.
+    release(&t_joinee->lock);
     return -1;
   }
   
@@ -845,6 +851,42 @@ kthread_join(int thread_id, uint64 up_status)
     res = -1;
   }
   return res;
+}
+
+int
+proc_collapse_all_other_threads()
+{
+  struct thread *t = mythread();
+  struct thread *t_other;
+  struct proc *p = t->process;
+
+  acquire(&p->lock);
+  if (p->killed) {
+    // some other thread has already killed the process and the rest of the threads.
+    release(&p->lock);
+    return -1;
+  }
+  p->killed = 2;
+  release(&p->lock);
+
+  proc_kill_all_threads_except(p, t);
+  for (t_other = p->threads; t_other < ARR_END(p->threads); t_other++) {
+    if (t_other != t) {
+      acquire(&t_other->lock);
+      // if we have gotten this far, we have to commit on killing all
+      // other threads regardless if another thread managed to kill this thread.
+      
+      // the function releases the lock before returning
+      kthread_join_core(t_other, t_other->tid, 0, 1);
+    }
+  }
+
+  // Reset killed status so that the following things can continue normally.
+  // This thread is the only thread alive if the code has gotten to this point,
+  // so it is safe.
+  p->killed = 0;
+  t->killed = 0;
+  return 0;
 }
 
 // Wait for a child process to exit and return its pid.
