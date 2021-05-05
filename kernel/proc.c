@@ -792,9 +792,6 @@ kthread_join_core(struct thread *t_joinee, int thread_id, uint64 up_status, int 
 
     // check whether the other thread exited
     if (t_joinee->state == T_ZOMBIE) {
-      // we are always returning in this branch, so decrement the counter here for less bugs (in case we forget)
-      t_joinee->waiting_on_me_count--;
-
       // copy the exit status
       if (up_status) {
         res = copyout(
@@ -804,11 +801,13 @@ kthread_join_core(struct thread *t_joinee, int thread_id, uint64 up_status, int 
           sizeof(t_joinee->xstate)
         );
         if (res < 0) {
+          t_joinee->waiting_on_me_count--;
           release(&t_joinee->lock);
           return -1;
         }
       }
 
+      t_joinee->waiting_on_me_count--;
       // free the thread only if the current thread is the last one
       if (t_joinee->waiting_on_me_count == 0) {
         freethread(t_joinee);
