@@ -26,9 +26,17 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
+
+// SIGNALS: syscalls user signatures
 uint sigprocmask(uint);
 int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);
 void sigret(void);
+
+// THREADS: syscalls users signatures
+int kthread_create(void (*start_func)(), void *stack);
+int kthread_id();
+void kthread_exit(int status);
+int kthread_join(int thread_id, int *status);
 
 // ulib.c
 int stat(const char*, struct stat*);

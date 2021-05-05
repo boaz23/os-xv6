@@ -110,16 +110,20 @@ int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
 
-// SIGNALS:
+// SIGNALS: public function declarations
+void            proc_handle_special_signals(struct thread *t);
+int             proc_find_custom_signal_handler(struct proc *p, struct sigaction *user_action, int *p_signum);
+// SIGNALS: syscalls function declarations
 uint            sigprocmask(uint sigmask);
 int             sigaction(int signum, uint64 act_addr, uint64 old_act_addr);
 void            sigret(void);
-void            proc_handle_special_signals(struct thread *t);
-int             proc_find_custom_signal_handler(struct proc *p, struct sigaction *user_action, int *p_signum);
 
-// THREADS:
-void            kthread_exit(int status);
+// THREADS: public function declarations
 int             proc_collapse_all_other_threads();
+// THREADS: syscalls function declarations
+int             kthread_create(uint64 start_func, uint64 up_usp);
+void            kthread_exit(int status);
+int             kthread_join(int thread_id, uint64 up_status);
 
 // swtch.S
 void            swtch(struct context*, struct context*);

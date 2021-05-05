@@ -100,8 +100,11 @@ sys_uptime(void)
   return xticks;
 }
 
+// SIGNALS: syscalls service layer definition
+
 uint64
-sys_sigprocmask(void){
+sys_sigprocmask(void)
+{
   uint sigmask;
 
   if(argint(0, (int *)&sigmask) < 0)
@@ -111,7 +114,8 @@ sys_sigprocmask(void){
 }
 
 uint64
-sys_sigaction(void){
+sys_sigaction(void)
+{
   int signum;
   uint64 act;
   uint64 old_act;
@@ -130,7 +134,61 @@ sys_sigaction(void){
 
 
 uint64
-sys_sigret(void){
+sys_sigret(void)
+{
   sigret();
   return 0;
+}
+
+// THREADS: syscalls service layer definition
+
+uint64
+sys_kthread_create(void)
+{
+  uint64 start_func;
+  uint64 up_usp;
+
+  if (argaddr(0, &start_func) < 0) {
+    return -1;
+  }
+  if (argaddr(1, &up_usp) < 0) {
+    return -1;
+  }
+
+  return kthread_create(start_func, up_usp);
+}
+
+uint64
+sys_kthread_id(void)
+{
+  return mythread()->tid;
+}
+
+uint64
+sys_kthread_exit(void)
+{
+  int status;
+
+  if (argint(0, &status) < 0) {
+    return -1;
+  }
+
+  kthread_exit(status);
+  return -1;
+}
+
+uint64
+sys_kthread_join(void)
+{
+  int thread_id;
+  uint64 up_status;
+
+  if (argint(0, &thread_id) < 0) {
+    return -1;
+  }
+  if (argaddr(1, &up_status) < 0) {
+    return -1;
+  }
+
+  return kthread_join(thread_id, up_status);
 }
