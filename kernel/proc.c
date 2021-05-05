@@ -349,10 +349,10 @@ freeproc(struct proc *p)
   p->name[0] = 0;
   p->killed = 0;
   p->xstate = 0;
-  p->state = P_UNUSED;
   p->freezed = 0;
   p->next_tid = 1;
   p->threads_alive_count = 0;
+  p->state = P_UNUSED;
 }
 
 // THREADS-LOCKS: no lock needed because it is called in functions which only 1 thread should execute
@@ -696,7 +696,11 @@ exit_core()
   // Parent might be sleeping in wait().
   wakeup(p->parent);
 
+  acquire(&t->lock); // required for the sched
   acquire(&p->lock);
+  
+  // printf("thread %d, %d:%d\n", p - proc, p->pid, t->tid);
+  t->state = T_ZOMBIE;
 
   // exit status should already have been set
   // THREADS: exit: process exit status set elsewhere
@@ -707,9 +711,6 @@ exit_core()
   // release process lock because sched expects it to be released
   release(&p->lock);
 
-  acquire(&t->lock); // required for the sched
-  
-  t->state = T_ZOMBIE;
   // Jump into the scheduler, never to return.
   sched();
   panic("zombie exit");
@@ -962,21 +963,22 @@ scheduler(void)
     intr_on();
 
     for(p = proc; p < &proc[NPROC]; p++) {
-      acquire(&p->lock);
-      if (p->state != P_SCHEDULABLE) {
+        acquire(&p->lock);
+        if (p->state != P_SCHEDULABLE) {
+          release(&p->lock);
+          continue;
+        }
         release(&p->lock);
-        continue;
-      }
-      release(&p->lock);
-      
-      // Switch to chosen process.  It is the process's job
-      // to release its lock and then reacquire it
-      // before jumping back to us.
+
       for (t = p->threads; t < ARR_END(p->threads); ++t) {
         acquire(&t->lock);
         if(t->state == T_RUNNABLE){
           t->state = T_RUNNING;
           c->thread = t;
+
+          // Switch to chosen thread. It is the thread's job
+          // to release its lock and then reacquire it
+          // before jumping back to us.
           swtch(&c->context, &t->context);
 
           // Process is done running for now.
