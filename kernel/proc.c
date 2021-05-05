@@ -337,7 +337,10 @@ freeproc(struct proc *p)
   if(p->kpage_trapframes)
     kfree(p->kpage_trapframes);
   for (t = p->threads; t < ARR_END(p->threads); t++) {
+    // THREADS: locking here because we might free a thread which still hasn't gotten back to the scheduler after it's process exiting
+    acquire(&t->lock);
     freethread(t);
+    release(&t->lock);
   }
   p->backup_trapframe = 0;
   if(p->pagetable)
@@ -1011,9 +1014,9 @@ sched(void)
     panic("sched t->lock");
   if(mycpu()->noff != 1)
     panic("sched locks");
-  if(t->state == T_RUNNING) {
+  if(t->state == T_RUNNING || t->state == T_UNUSED || t->state == T_USED) {
     panicf(
-      "sched thread RUNNING (pid=%d, pstate=%s, pname='%s', tid=%d, tstate=%s, tname='%s')",
+      "sched thread state (pid=%d, pstate=%s, pname='%s', tid=%d, tstate=%s, tname='%s')",
       p->pid, process_states_names[p->state], p->name,
       t->tid, threads_states_names[t->state], t->name
     );
