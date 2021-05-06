@@ -2,11 +2,16 @@
 #include "kernel/types.h"
 #include "user/user.h"
 #include "kernel/syscall.h"
+#include <stdarg.h>
+
+#define NTHREAD 8
+#define STDOUT 1
+void vprintf(int, const char*, va_list);
 
 /*
 // TODO:
-* too many threads (process has NTHREADS threads)
 * exit with multiple threads
+* too many threads (process has NTHREADS threads)
 * exec with multiple threads
 * fork with multiple threads
 * multiple threads in join
@@ -16,12 +21,23 @@
 * exec when collpsing
 */
 
+// #define ALLOW_PRINTING
 #define print_test_error(s, msg) printf("%s: %s\n", (s), (msg))
 
 int pipe_fds[2];
 int pipe_fds_2[2];
 char *test_name;
 int expected_xstatus;
+
+void print(char *fmt, ...) {
+  #ifdef ALLOW_PRINTING
+  va_list ap;
+  va_start(ap, fmt);
+  vprintf(STDOUT, fmt, ap);
+  va_end(ap);
+  printf("\n");
+  #endif
+}
 
 int run(void f(char *), char *s, int exp_xstatus) {
   int pid;
@@ -80,50 +96,49 @@ void run_for(int ticks) {
 
 void thread_func_run_forever() {
   int my_tid = kthread_id();
-  printf("thread %d started\n", my_tid);
+  print("thread %d started", my_tid);
   run_forever();
 }
 void thread_func_run_for_5_xstatus_74() {
   int my_tid = kthread_id();
-  printf("thread %d started\n", my_tid);
+  print("thread %d started", my_tid);
   run_for(5);
-  printf("thread %d exiting\n", my_tid);
+  print("thread %d exiting", my_tid);
   kthread_exit(74);
 }
 
-void test_create_thread_exit_simple_other_thread_func() {
-  printf("hello from other thread\n");
+void create_thread_exit_simple_other_thread_func() {
+  print("hello from other thread");
   kthread_exit(6);
 }
-void test_create_thread_exit_simple(char *s) {
+void create_thread_exit_simple(char *s) {
   void *stack = malloc(STACK_SIZE);
-  if (kthread_create(test_create_thread_exit_simple_other_thread_func, stack) < 0) {
-    printf("failed to create a thread\n");
+  if (kthread_create(create_thread_exit_simple_other_thread_func, stack) < 0) {
+    print("failed to create a thread");
     exit(-2);
   }
 
-  printf("hello from main thread\n");
-  free(stack);
+  print("hello from main thread");
   kthread_exit(-3);
 }
 
-void test_kthread_create_func(void) {
+void kthread_create_simple_func(void) {
   char c;
-  printf("pipes other thread: %d, %d\n", pipe_fds[0], pipe_fds[1]);
+  print("pipes other thread: %d, %d", pipe_fds[0], pipe_fds[1]);
   if (read(pipe_fds[0], &c, 1) != 1) {
     error_exit("pipe read - other thread failed");
   }
 
-  printf("hello from other thread\n");
+  print("hello from other thread");
 
   if (write(pipe_fds_2[1], "x", 1) < 0) {
     error_exit("pipe write - other thread failed");
   }
 
-  printf("second thread exiting\n");
+  print("second thread exiting");
   kthread_exit(0);
 }
-void test_kthread_create(char *s) {
+void kthread_create_simple(char *s) {
   void *other_thread_user_stack_pointer;
   char c;
   if (pipe(pipe_fds) < 0) {
@@ -132,11 +147,11 @@ void test_kthread_create(char *s) {
   if (pipe(pipe_fds_2) < 0) {
     error_exit("pipe 2 failed");
   }
-  printf("pipes main thread: %d, %d\n", pipe_fds[0], pipe_fds[1]);
+  print("pipes main thread: %d, %d", pipe_fds[0], pipe_fds[1]);
   if ((other_thread_user_stack_pointer = malloc(STACK_SIZE)) < 0) {
     error_exit("failed to allocate user stack");
   }
-  if (kthread_create(test_kthread_create_func, other_thread_user_stack_pointer) < 0) {
+  if (kthread_create(kthread_create_simple_func, other_thread_user_stack_pointer) < 0) {
     error_exit("creating thread failed");
   }
 
@@ -144,16 +159,15 @@ void test_kthread_create(char *s) {
     error_exit("pipe write - main thread failed");
   }
   
-  printf("main thread after write\n");
+  print("main thread after write");
   if (read(pipe_fds_2[0], &c, 1) != 1) {
     error_exit("pipe read - main thread failed");
   }
   
-  free(other_thread_user_stack_pointer);
   kthread_exit(0);
 }
 
-void test_join_simple(char *s) {
+void join_simple(char *s) {
   int other_tid;
   int xstatus;
   void *stack = malloc(STACK_SIZE);
@@ -162,27 +176,27 @@ void test_join_simple(char *s) {
     error_exit("kthread_create failed");
   }
 
-  printf("created thread %d\n", other_tid);
+  print("created thread %d", other_tid);
   if (kthread_join(other_tid, &xstatus) < 0) {
     error_exit_core("join failed", -2);
   }
 
-  printf("joined with thread %d, xstatus: %d\n", other_tid, xstatus);
+  print("joined with thread %d, xstatus: %d", other_tid, xstatus);
   free(stack);
   kthread_exit(-3);
 }
 
-void test_join_self(char *s) {
+void join_self(char *s) {
   int xstatus;
   int other_tid;
   void *stack = malloc(STACK_SIZE);
   int my_tid = kthread_id();
-  printf("thread %d started\n", my_tid);
+  print("thread %d started", my_tid);
   other_tid = kthread_create(thread_func_run_for_5_xstatus_74, stack);
   if (other_tid < 0) {
     error_exit("kthread_create failed");
   }
-  printf("created thread %d\n", other_tid);
+  print("created thread %d", other_tid);
   if (kthread_join(other_tid, &xstatus) < 0) {
     error_exit_core("join failed", -2);
   }
@@ -194,58 +208,99 @@ void test_join_self(char *s) {
   kthread_exit(-7);
 }
 
-void test_exit_multiple_threads(char *s) {
+void exit_multiple_threads(char *s) {
   int other_tid;
   
   void *stack, *stack2;
   int my_tid = kthread_id();
-  printf("thread %d started\n", my_tid);
+  print("thread %d started", my_tid);
 
   stack = malloc(STACK_SIZE);
   other_tid = kthread_create(thread_func_run_forever, stack);
   if (other_tid < 0) {
     error_exit("kthread_create failed");
   }
-  printf("created thread %d\n", other_tid);
+  print("created thread %d", other_tid);
   stack2 = malloc(STACK_SIZE);
   other_tid = kthread_create(thread_func_run_forever, stack2);
   if (other_tid < 0) {
     error_exit("kthread_create failed");
   }
-  printf("created thread %d\n", other_tid);
+  print("created thread %d", other_tid);
   sleep(2);
-  printf("exiting...\n");
-
-  free(stack);
-  free(stack2);
+  print("exiting...");
+  
   exit(9);
 }
 
-void test_exec_multiple_threads(char *s) {
+void max_threads(char *s) {
+  void *stacks[NTHREAD - 1];
+  int tids[NTHREAD - 1];
+  void *last_stack;
+  int my_tid = kthread_id();
+
+  print("thread %d started", my_tid);
+  for (int i = 0; i < NTHREAD - 1; i++) {
+    stacks[i] = malloc(STACK_SIZE);
+    if (stacks[i] < 0) {
+      error_exit("malloc failed");
+    }
+    tids[i] = kthread_create(thread_func_run_forever, stacks[i]);
+    if (tids[i] < 0) {
+      error_exit("kthread_create failed");
+    }
+
+    print("created thread %d", tids[i]);
+  }
+
+  if ((last_stack = malloc(STACK_SIZE)) < 0) {
+    error_exit("last malloc failed");
+  }
+  // if (kthread_create(thread_func_run_forever, last_stack) >= 0) {
+  //   error_exit("created too many threads");
+  // }
+  // if (kthread_create(thread_func_run_forever, last_stack) >= 0) {
+  //   error_exit("created too many threads 2");
+  // }
+  free(last_stack);
+  
+  print("going to sleep");
+  sleep(5);
+  print("exiting...");
+  exit(8);
+}
+
+void exec_multiple_threads(char *s) {
   // int other_tid;
   
   // void *stack;
   // int my_tid = kthread_id();
-  // printf("thread %d started\n", my_tid);
+  // print("thread %d started", my_tid);
 
   // stack = malloc(STACK_SIZE);
   // other_tid = kthread_create(thread_func_run_forever, stack);
   // if (other_tid < 0) {
   //   error_exit("kthread_create failed");
   // }
-  // printf("created thread %d\n", other_tid);
+  // print("created thread %d", other_tid);
   // stack = malloc(STACK_SIZE);
   // other_tid = kthread_create(thread_func_run_forever, stack);
   // if (other_tid < 0) {
   //   error_exit("kthread_create failed");
   // }
-  // printf("created thread %d\n", other_tid);
+  // print("created thread %d", other_tid);
   // sleep(2);
-  // printf("exec ''...\n");
+  // print("exec ''...");
   // exec();
 }
 
 void main(int argc, char *argv[]) {
-  run(test_exit_multiple_threads, "exit_when_another_runs", 9);
+  // run(max_threads, "max_threads", 8);
+  for (int i = 0; i < 100; i++) {
+    if (!run(max_threads, "max_threads", 8)) {
+      break; 
+    }
+    sleep(5);
+  }
   exit(-5);
 }
