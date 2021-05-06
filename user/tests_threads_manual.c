@@ -4,6 +4,7 @@
 #include "kernel/syscall.h"
 
 /*
+// TODO:
 * too many threads (process has NTHREADS threads)
 * exit with multiple threads
 * exec with multiple threads
@@ -102,6 +103,7 @@ void test_create_thread_exit_simple(char *s) {
   }
 
   printf("hello from main thread\n");
+  free(stack);
   kthread_exit(-3);
 }
 
@@ -147,6 +149,7 @@ void test_kthread_create(char *s) {
     error_exit("pipe read - main thread failed");
   }
   
+  free(other_thread_user_stack_pointer);
   kthread_exit(0);
 }
 
@@ -165,6 +168,7 @@ void test_join_simple(char *s) {
   }
 
   printf("joined with thread %d, xstatus: %d\n", other_tid, xstatus);
+  free(stack);
   kthread_exit(-3);
 }
 
@@ -186,13 +190,14 @@ void test_join_self(char *s) {
     error_exit_core("join with self succeeded", -3);
   }
   
+  free(stack);
   kthread_exit(-7);
 }
 
 void test_exit_multiple_threads(char *s) {
   int other_tid;
   
-  void *stack;
+  void *stack, *stack2;
   int my_tid = kthread_id();
   printf("thread %d started\n", my_tid);
 
@@ -202,14 +207,17 @@ void test_exit_multiple_threads(char *s) {
     error_exit("kthread_create failed");
   }
   printf("created thread %d\n", other_tid);
-  stack = malloc(STACK_SIZE);
-  other_tid = kthread_create(thread_func_run_forever, stack);
+  stack2 = malloc(STACK_SIZE);
+  other_tid = kthread_create(thread_func_run_forever, stack2);
   if (other_tid < 0) {
     error_exit("kthread_create failed");
   }
   printf("created thread %d\n", other_tid);
   sleep(2);
   printf("exiting...\n");
+
+  free(stack);
+  free(stack2);
   exit(9);
 }
 
@@ -238,6 +246,6 @@ void test_exec_multiple_threads(char *s) {
 }
 
 void main(int argc, char *argv[]) {
-  // run(test_exit_when_another_runs, "exit_when_another_runs", 9);
+  run(test_exit_multiple_threads, "exit_when_another_runs", 9);
   exit(-5);
 }
