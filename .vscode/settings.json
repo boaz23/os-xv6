@@ -14,6 +14,7 @@
         "syscall.h": "c",
         "riscv.h": "c",
         "proc.h": "c",
-        "stdarg.h": "c"
+        "stdarg.h": "c",
+        "threads.h": "c"
     }
 }
