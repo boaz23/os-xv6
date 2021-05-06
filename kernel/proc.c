@@ -56,17 +56,20 @@ trace_thread_act_core(const char *f, const char *msg, const char *fmt, ...)
 {
   #ifdef TRACE_THREADS_LIFE
   va_list ap;
+  int print_locking;
   char esc[2] = { 27, 0 };
   struct thread *t = mythread();
   struct proc *p = t->process;
   if (p->pid >= 1 && p->pid <= 2) {
     return;
   }
-  printf("%s[34mthread %d#%d-%d#%d - %s: %s", esc, p->pid, INDEX_OF_PROC(p), t->tid, INDEX_OF_THREAD(t), f, msg);
+  print_locking = print_acquire_lock();
+  printf_no_lock("%s[34mthread %d#%d-%d#%d - %s: %s", esc, p->pid, INDEX_OF_PROC(p), t->tid, INDEX_OF_THREAD(t), f, msg);
   va_start(ap, fmt);
-  vprintf((char *)fmt, ap);
+  vprintf_no_lock((char *)fmt, ap);
   va_end(ap);
-  printf("%s[0m\n", esc);
+  printf_no_lock("%s[0m\n", esc);
+  print_release_lock(print_locking);
   #endif
 }
 

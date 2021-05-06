@@ -100,6 +100,35 @@ vprintf_core(char *fmt, va_list ap)
   }
 }
 
+int
+print_acquire_lock()
+{
+  int locking;
+
+  locking = pr.locking;
+  if(locking) {
+    acquire(&pr.lock);
+  }
+  return locking;
+}
+
+void
+print_release_lock(int locking)
+{
+  if (locking) {
+    release(&pr.lock);
+  }
+}
+
+void
+vprintf_no_lock(char *fmt, va_list ap)
+{
+  if (fmt == 0)
+    panic("null fmt");
+
+  vprintf_core(fmt, ap);
+}
+
 void
 vprintf(char *fmt, va_list ap)
 {
@@ -116,6 +145,18 @@ vprintf(char *fmt, va_list ap)
 
   if(locking)
     release(&pr.lock);
+}
+
+void
+printf_no_lock(char *fmt, ...)
+{
+  va_list ap;
+  if (fmt == 0)
+    panic("null fmt");
+
+  va_start(ap, fmt);
+  vprintf_core(fmt, ap);
+  va_end(ap);
 }
 
 // Print to the console. only understands %d, %x, %p, %s.
