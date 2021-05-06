@@ -6,6 +6,7 @@
 #include "proc.h"
 #include "defs.h"
 #include "signal.h"
+#include "stdarg.h"
 
 // THREADS: only the thread with index 0 has this kstack
 // THREADS: cast to void* because kstack in thread is now void*
@@ -17,6 +18,9 @@
 #define INDEX_OF(i, a) ((i) - (a))
 #define INDEX_OF_PROC(p) INDEX_OF((p), proc)
 #define INDEX_OF_THREAD(t) INDEX_OF(t, (t)->process->threads)
+
+#define TRACE_THREADS_LIFE
+// #define PRINT_KR_SIGS
 
 struct cpu cpus[NCPU];
 
@@ -47,6 +51,24 @@ struct spinlock wait_lock;
 
 int is_valid_signum(int signum);
 int is_overridable_signum(int signum);
+
+void
+trace_thread_act_core(char *f, char *msg, char *fmt, ...)
+{
+  #ifdef TRACE_THREADS_LIFE
+  va_list ap;
+  struct thread *t = mythread();
+  struct proc *p = t->process;
+  if (p->pid >= 1 && p->pid <= 2) {
+    return;
+  }
+  printf("thread %d#%d-%d#%d - %s: %s", p->pid, INDEX_OF_PROC(p), t->tid, INDEX_OF_THREAD(t), f, msg);
+  va_start(ap, fmt);
+  printf(fmt, ap);
+  va_end(ap);
+  printf("\n");
+  #endif
+}
 
 // Allocate a page for each process's kernel stack.
 // Map it high in memory, followed by an invalid
@@ -532,24 +554,29 @@ kthread_create(uint64 start_func, uint64 up_usp)
   struct thread *t = mythread();
   struct proc *p = t->process;
 
+  trace_thread_act("kthread_create", "enter");
   if (!up_usp) {
     // invalid user stack pointer
+    trace_thread_act("kthread_create", "invalid user stack pointer");
     return -1;
   }
 
   acquire(&p->lock);
   if (p->killed) {
+    trace_thread_act("kthread_create", "process was killed");
     release(&p->lock);
     return -1;
   }
   nt = allocthread(p);
   if (!nt) {
+    trace_thread_act("kthread_create", "thread allocation failed");
     release(&p->lock);
     return -1;
   }
   p->threads_alive_count++;
   release(&p->lock);
 
+  trace_thread_act_core("kthread_create", "created thread", " %d#%d-%d#%d", p->pid, INDEX_OF_PROC(p), nt->tid, INDEX_OF_THREAD(nt));
   tid = nt->tid;
   *nt->trapframe = *t->trapframe;
   nt->trapframe->epc = start_func;
@@ -714,7 +741,8 @@ kthread_exit(int status)
   struct thread *t = mythread();
   struct proc *p = t->process;
   int should_exit = 0;
-  
+
+  trace_thread_act("kthread_exit", "enter");
   acquire(&p->lock);
   p->threads_alive_count--;
   if (p->threads_alive_count == 0) {
@@ -733,13 +761,16 @@ kthread_exit(int status)
   t->xstate = status;
 
   if (should_exit) {
+    trace_thread_act("kthread_exit", "last one alive, waiting for the rest...");
     release(&t->lock);
     thread_wait_for_all_others();
+    trace_thread_act("kthread_exit", "finishing the process");
     exit_core();
   }
   else {
-    wakeup_proc_threads(p, t);
+    trace_thread_act("kthread_exit", "more threads remain");
     t->state = T_ZOMBIE;
+    wakeup_proc_threads(p, t);
     sched();
     panic("thread exited returned from scheduler.");
   }
@@ -867,6 +898,7 @@ kthread_join_core(struct thread *t_joinee, int thread_id, uint64 up_status, int 
 
     // if this thread was killed, just quit and return an error.
     if (!force && THREAD_IS_KILLED(t_joiner)) {
+      trace_thread_act_core("kthread_join", "joining thread was killed", " (joinee %d)", thread_id);
       t_joinee->waiting_on_me_count--;
       release(&t_joinee->lock);
       return -2;
@@ -874,6 +906,7 @@ kthread_join_core(struct thread *t_joinee, int thread_id, uint64 up_status, int 
 
     // check whether the other thread exited
     if (t_joinee->state == T_ZOMBIE) {
+      trace_thread_act_core("kthread_join", "found zombie", " %d", thread_id);
       // copy the exit status
       if (up_status) {
         res = copyout(
@@ -883,6 +916,7 @@ kthread_join_core(struct thread *t_joinee, int thread_id, uint64 up_status, int 
           sizeof(t_joinee->xstate)
         );
         if (res < 0) {
+          trace_thread_act_core("kthread_join", "status copy failed", " (%d)", thread_id);
           t_joinee->waiting_on_me_count--;
           release(&t_joinee->lock);
           return -1;
@@ -892,7 +926,11 @@ kthread_join_core(struct thread *t_joinee, int thread_id, uint64 up_status, int 
       t_joinee->waiting_on_me_count--;
       // free the thread only if the current thread is the last one
       if (t_joinee->waiting_on_me_count == 0) {
+        trace_thread_act_core("kthread_join", "freeing joinee thread", " %d", thread_id);
         freethread(t_joinee);
+      }
+      else {
+        trace_thread_act_core("kthread_join", "more threads waiting on thread", " %d", thread_id);
       }
       release(&t_joinee->lock);
       return 0;
@@ -911,21 +949,25 @@ kthread_join(int thread_id, uint64 up_status)
   struct thread *t_joinee;
   struct thread *t_joiner;
   struct proc *p;
-  
-  if (thread_id <= 0) {
-    // invalid thread id
-    return -1;
-  }
 
   t_joiner = mythread();
-  if (t_joiner->tid == thread_id) {
-    // the thread is trying to join himself.
+  p = t_joiner->process;
+  trace_thread_act_core("kthread_join", "joining thread", " %d", thread_id);
+  if (thread_id <= 0) {
+    // invalid thread id
+    trace_thread_act_core("kthread_join", "invalid thread id", " %d", thread_id);
     return -1;
   }
 
-  p = t_joiner->process;
+  if (t_joiner->tid == thread_id) {
+    // the thread is trying to join himself.
+    trace_thread_act_core("kthread_join", "attempt to join self", " (%d)", thread_id);
+    return -1;
+  }
+
   t_joinee = proc_find_thread_by_id(p, thread_id);
   if (!t_joinee) {
+    trace_thread_act_core("kthread_join", "", "thread %d not found", thread_id);
     return -1;
   }
   
@@ -976,12 +1018,17 @@ proc_collapse_all_other_threads()
   struct thread *t = mythread();
   struct proc *p = t->process;
 
+  trace_thread_act("exec", "checking killed status (second time)");
   if (proc_kill_if_alive(p, KILLED_SPECIAL) < 0) {
+    trace_thread_act("exec", "process was already killed (second check)");
     return -1;
   }
+  trace_thread_act("exec", "killing other threads");
   release(&p->lock);
   proc_kill_all_threads_except(p, t);
+  trace_thread_act("exec", "waiting for them...");
   thread_wait_for_all_others();
+  trace_thread_act("exec", "finished waiting");
   proc_reset_all_threads_except(p, t);
 
   // Reset killed status so that the following things can continue normally.
@@ -1411,8 +1458,6 @@ void check_not_overriden(struct proc *p, int signum, char *sig_name)
     panic("behavior changed by user.\n");
   }
 }
-
-// #define PRINT_KR_SIGS
 
 // TODO: what if the signal is ignore and blocked (both at the same time)?
 //       meanwhile, ignore overtakes blocked.

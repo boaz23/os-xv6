@@ -130,10 +130,11 @@ panicf(char *fmt, ...)
 {
   va_list ap;
 
-  va_start(ap, fmt);
   pr.locking = 0;
   printf("panic: ");
+  va_start(ap, fmt);
   printf(fmt, ap);
+  va_end(ap);
   printf("\n");
   panicked = 1; // freeze uart output from other CPUs
   for(;;)

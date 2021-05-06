@@ -125,6 +125,9 @@ int             kthread_create(uint64 start_func, uint64 up_usp);
 void            kthread_exit(int status);
 int             kthread_join(int thread_id, uint64 up_status);
 
+#define trace_thread_act(f, msg) trace_thread_act_core((f), (msg), "")
+void trace_thread_act_core(char *f, char *msg, char *fmt, ...);
+
 // swtch.S
 void            swtch(struct context*, struct context*);
 

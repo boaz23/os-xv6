@@ -26,8 +26,10 @@ exec(char *path, char **argv)
   struct proc *p = myproc();
 
   // THREADS: exec early bail if process already killed
+  trace_thread_act("exec", "checking killed status");
   acquire(&p->lock);
   if (p->killed) {
+    trace_thread_act("exec", "process was already killed");
     release(&p->lock);
     return -1;
   }
