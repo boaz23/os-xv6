@@ -6,6 +6,7 @@
 #define print_test_error(s, msg) printf("%s: %s\n", (s), (msg))
 
 int pipe_fds[2];
+int pipe_fds_2[2];
 char *test_name;
 
 int run(void f(char *), char *s) {
@@ -48,10 +49,11 @@ void test_kthread_create_func(void) {
 
   printf("hello from other thread\n");
 
-  if (write(pipe_fds[1], "x", 1) < 0) {
+  if (write(pipe_fds_2[1], "x", 1) < 0) {
     error_exit("pipe write - other thread failed");
   }
 
+  printf("second thread exiting\n");
   kthread_exit(0);
 }
 void test_kthread_create(char *s) {
@@ -59,6 +61,9 @@ void test_kthread_create(char *s) {
   char c;
   if (pipe(pipe_fds) < 0) {
     error_exit("pipe failed");
+  }
+  if (pipe(pipe_fds_2) < 0) {
+    error_exit("pipe 2 failed");
   }
   printf("pipes main thread: %d, %d\n", pipe_fds[0], pipe_fds[1]);
   if ((other_thread_user_stack_pointer = malloc(STACK_SIZE)) < 0) {
@@ -71,7 +76,9 @@ void test_kthread_create(char *s) {
   if (write(pipe_fds[1], "x", 1) < 0) {
     error_exit("pipe write - main thread failed");
   }
-  if (read(pipe_fds[0], &c, 1) != 1) {
+  
+  printf("main thread after write\n");
+  if (read(pipe_fds_2[0], &c, 1) != 1) {
     error_exit("pipe read - main thread failed");
   }
   
@@ -94,6 +101,6 @@ void test_create_thread_exit_simple(char *s) {
 }
 
 void main(int argc, char *argv[]) {
-  run(test_create_thread_exit_simple, "kthread_create");
+  run(test_kthread_create, "kthread_create");
   exit(-5);
 }
