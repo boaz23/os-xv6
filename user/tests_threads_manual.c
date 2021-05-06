@@ -3,13 +3,26 @@
 #include "user/user.h"
 #include "kernel/syscall.h"
 
+/*
+* too many threads (process has NTHREADS threads)
+* exit with multiple threads
+* exec with multiple threads
+* fork with multiple threads
+* multiple threads in join
+* kthread_create when collpasing
+* kthread_join when collapsing
+* exit when collapsing
+* exec when collpsing
+*/
+
 #define print_test_error(s, msg) printf("%s: %s\n", (s), (msg))
 
 int pipe_fds[2];
 int pipe_fds_2[2];
 char *test_name;
+int expected_xstatus;
 
-int run(void f(char *), char *s) {
+int run(void f(char *), char *s, int exp_xstatus) {
   int pid;
   int xstatus;
 
@@ -20,17 +33,19 @@ int run(void f(char *), char *s) {
   }
   if(pid == 0) {
     test_name = s;
+    expected_xstatus = exp_xstatus;
     f(s);
     test_name = 0;
+    expected_xstatus = 0;
     exit(0);
   }
   else {
     wait(&xstatus);
-    if(xstatus != 0)
+    if(xstatus != exp_xstatus)
       printf("FAILED with status %d\n", xstatus);
     else
       printf("OK\n");
-    return xstatus == 0;
+    return xstatus == exp_xstatus;
   }
 }
 
@@ -40,12 +55,39 @@ void error_exit_core(char *msg, int xstatus) {
   exit(xstatus);
 }
 
-void run_for(int ticks) {
+void run_forever() {
+  int i = 0;
+  while (1) {
+    i++;
+  }
+}
+void run_for_core(int ticks) {
   int t0 = uptime();
   int i = 0;
   while (uptime() - t0 <= ticks) {
     i++;
   }
+}
+void run_for(int ticks) {
+  if (ticks < 0) {
+    run_for_core(ticks);
+  }
+  else {
+    run_forever();
+  }
+}
+
+void thread_func_run_forever() {
+  int my_tid = kthread_id();
+  printf("thread %d started\n", my_tid);
+  run_forever();
+}
+void thread_func_run_for_5_xstatus_74() {
+  int my_tid = kthread_id();
+  printf("thread %d started\n", my_tid);
+  run_for(5);
+  printf("thread %d exiting\n", my_tid);
+  kthread_exit(74);
 }
 
 void test_create_thread_exit_simple_other_thread_func() {
@@ -108,18 +150,11 @@ void test_kthread_create(char *s) {
   kthread_exit(0);
 }
 
-void test_join_simple_func() {
-  int my_tid = kthread_id();
-  printf("thread %d started\n", my_tid);
-  run_for(2);
-  printf("thread %d exiting\n", my_tid);
-  kthread_exit(74);
-}
 void test_join_simple(char *s) {
   int other_tid;
   int xstatus;
   void *stack = malloc(STACK_SIZE);
-  other_tid = kthread_create(test_join_simple_func, stack);
+  other_tid = kthread_create(thread_func_run_for_5_xstatus_74, stack);
   if (other_tid < 0) {
     error_exit("kthread_create failed");
   }
@@ -139,7 +174,7 @@ void test_join_self(char *s) {
   void *stack = malloc(STACK_SIZE);
   int my_tid = kthread_id();
   printf("thread %d started\n", my_tid);
-  other_tid = kthread_create(test_join_simple_func, stack);
+  other_tid = kthread_create(thread_func_run_for_5_xstatus_74, stack);
   if (other_tid < 0) {
     error_exit("kthread_create failed");
   }
@@ -154,7 +189,55 @@ void test_join_self(char *s) {
   kthread_exit(-7);
 }
 
+void test_exit_multiple_threads(char *s) {
+  int other_tid;
+  
+  void *stack;
+  int my_tid = kthread_id();
+  printf("thread %d started\n", my_tid);
+
+  stack = malloc(STACK_SIZE);
+  other_tid = kthread_create(thread_func_run_forever, stack);
+  if (other_tid < 0) {
+    error_exit("kthread_create failed");
+  }
+  printf("created thread %d\n", other_tid);
+  stack = malloc(STACK_SIZE);
+  other_tid = kthread_create(thread_func_run_forever, stack);
+  if (other_tid < 0) {
+    error_exit("kthread_create failed");
+  }
+  printf("created thread %d\n", other_tid);
+  sleep(2);
+  printf("exiting...\n");
+  exit(9);
+}
+
+void test_exec_multiple_threads(char *s) {
+  // int other_tid;
+  
+  // void *stack;
+  // int my_tid = kthread_id();
+  // printf("thread %d started\n", my_tid);
+
+  // stack = malloc(STACK_SIZE);
+  // other_tid = kthread_create(thread_func_run_forever, stack);
+  // if (other_tid < 0) {
+  //   error_exit("kthread_create failed");
+  // }
+  // printf("created thread %d\n", other_tid);
+  // stack = malloc(STACK_SIZE);
+  // other_tid = kthread_create(thread_func_run_forever, stack);
+  // if (other_tid < 0) {
+  //   error_exit("kthread_create failed");
+  // }
+  // printf("created thread %d\n", other_tid);
+  // sleep(2);
+  // printf("exec ''...\n");
+  // exec();
+}
+
 void main(int argc, char *argv[]) {
-  test_join_self("join_simple");
+  // run(test_exit_when_another_runs, "exit_when_another_runs", 9);
   exit(-5);
 }
