@@ -1,3 +1,5 @@
+#include <stdarg.h>
+
 struct buf;
 struct context;
 struct file;
@@ -78,6 +80,7 @@ int             piperead(struct pipe*, uint64, int);
 int             pipewrite(struct pipe*, uint64, int);
 
 // printf.c
+void            vprintf(char*, va_list ap);
 void            printf(char*, ...);
 void            panic(char*) __attribute__((noreturn));
 void            panicf(char *fmt, ...) __attribute__((noreturn));

@@ -6,7 +6,6 @@
 #include "proc.h"
 #include "defs.h"
 #include "signal.h"
-#include "stdarg.h"
 
 // THREADS: only the thread with index 0 has this kstack
 // THREADS: cast to void* because kstack in thread is now void*
@@ -19,7 +18,7 @@
 #define INDEX_OF_PROC(p) INDEX_OF((p), proc)
 #define INDEX_OF_THREAD(t) INDEX_OF(t, (t)->process->threads)
 
-// #define TRACE_THREADS_LIFE
+#define TRACE_THREADS_LIFE
 // #define PRINT_KR_SIGS
 
 struct cpu cpus[NCPU];
@@ -65,7 +64,8 @@ trace_thread_act_core(const char *f, const char *msg, const char *fmt, ...)
   }
   printf("%s[34mthread %d#%d-%d#%d - %s: %s", esc, p->pid, INDEX_OF_PROC(p), t->tid, INDEX_OF_THREAD(t), f, msg);
   va_start(ap, fmt);
-  printf((char *)fmt, ap);
+  vprintf((char *)fmt, ap);
+  va_end(ap);
   printf("%s[0m\n", esc);
   #endif
 }
