@@ -316,11 +316,11 @@ freethread(struct thread *t)
   t->chan = 0;
   t->killed = 0;
   t->name[0] = 0;
-  t->state = T_UNUSED;
   t->tid = 0;
   t->xstate = 0;
   t->trapframe = 0;
   t->waiting_on_me_count = 0;
+  t->state = T_UNUSED;
 }
 
 // THREADS-TODO: when allocating a thread, allocate a page for its kstack.
