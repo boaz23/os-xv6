@@ -136,6 +136,11 @@ enum procstate { P_UNUSED, P_USED, P_SCHEDULABLE, P_ZOMBIE };
 #define NTHREAD 8
 
 // Per-process state
+
+#define KILLED_DFL 1
+#define KILLED_SPECIAL 2
+#define KILLED_XSTATUS -1
+
 struct proc {
   struct spinlock lock;
 

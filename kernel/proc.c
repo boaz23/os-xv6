@@ -12,7 +12,11 @@
 // map kernel stacks beneath the trampoline,
 // each surrounded by invalid guard pages.
 #define KSTACK(p) ((void *)(TRAMPOLINE - (((p) - proc)+1)* 2*PGSIZE))
-#define ARR_END(a) (&((a)[(sizeof((a)) / sizeof((a)[0]))]))
+#define ARR_LEN(a) (sizeof((a)) / sizeof((a)[0]))
+#define ARR_END(a) (&((a)[ARR_LEN(a)]))
+#define INDEX_OF(i, a) ((i) - (a))
+#define INDEX_OF_PROC(p) INDEX_OF((p), proc)
+#define INDEX_OF_THREAD(t) INDEX_OF(t, (t)->process->threads)
 
 struct cpu cpus[NCPU];
 
@@ -31,6 +35,7 @@ static void freeproc(struct proc *p);
 static void freethread(struct thread *t);
 void exit_core();
 void wakeup_proc_threads(struct proc *p, void *chan);
+void thread_wait_for_all_others(void);
 
 extern char trampoline[]; // trampoline.S
 
@@ -323,6 +328,20 @@ freethread(struct thread *t)
   t->state = T_UNUSED;
 }
 
+void
+proc_free_all_threads_except(struct proc *p, struct thread *t_exclude)
+{
+  struct thread *t;
+  for (t = p->threads; t < ARR_END(p->threads); t++) {
+    if (t != t_exclude) {
+      // THREADS: locking here because we might free a thread which still hasn't gotten back to the scheduler after it's process exiting
+      acquire(&t->lock);
+      freethread(t);
+      release(&t->lock);
+    }
+  }
+}
+
 // THREADS-TODO: when allocating a thread, allocate a page for its kstack.
 //               therefore, it also needs to be freed,
 //               except for the thread with index 0 because its kstack is allocated statically.
@@ -333,15 +352,9 @@ freethread(struct thread *t)
 static void
 freeproc(struct proc *p)
 {
-  struct thread *t;
   if(p->kpage_trapframes)
     kfree(p->kpage_trapframes);
-  for (t = p->threads; t < ARR_END(p->threads); t++) {
-    // THREADS: locking here because we might free a thread which still hasn't gotten back to the scheduler after it's process exiting
-    acquire(&t->lock);
-    freethread(t);
-    release(&t->lock);
-  }
+  proc_free_all_threads_except(p, 0);
   p->backup_trapframe = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
@@ -624,11 +637,31 @@ proc_kill_all_threads(struct proc *p)
   proc_kill_all_threads_except(p, 0);
 }
 
-void
-proc_kill_core(struct proc *p, int status)
+int
+proc_kill_if_alive_no_locks(struct proc *p, int killed)
 {
-  p->killed = 1;
-  p->xstate = status;
+  if (p->killed) {
+    // some other thread has already killed the process and the rest of the threads.
+    return -1;
+  }
+  p->killed = killed;
+  return 0;
+}
+
+// marks the process as killed if it wasn't already.
+// locks the process before doing so and releases if killed.
+// does not release if not killed.
+int
+proc_kill_if_alive(struct proc *p, int killed)
+{
+  acquire(&p->lock);
+  if (p->killed) {
+    // some other thread has already killed the process and the rest of the threads.
+    release(&p->lock);
+    return -1;
+  }
+  p->killed = killed;
+  return 0;
 }
 
 // THREADS: kthread_exit
@@ -643,8 +676,12 @@ kthread_exit(int status)
   p->threads_alive_count--;
   if (p->threads_alive_count == 0) {
     should_exit = 1;
-    if (!p->killed) {
-      proc_kill_core(p, -1);
+    if (proc_kill_if_alive_no_locks(p, KILLED_DFL) == 0) {
+      p->xstate = KILLED_XSTATUS;
+    }
+    else {
+      // process was already killed by another thread.
+      // thus p->xstate was already set beforehand by that thread.
     }
   }
   release(&p->lock);
@@ -654,6 +691,7 @@ kthread_exit(int status)
 
   if (should_exit) {
     release(&t->lock);
+    thread_wait_for_all_others();
     exit_core();
   }
   else {
@@ -700,10 +738,9 @@ exit_core()
   wakeup(p->parent);
 
   acquire(&t->lock); // required for the sched
-  acquire(&p->lock);
-  
-  // printf("thread %d, %d:%d\n", p - proc, p->pid, t->tid);
   t->state = T_ZOMBIE;
+
+  acquire(&p->lock);
 
   // exit status should already have been set
   // THREADS: exit: process exit status set elsewhere
@@ -726,26 +763,24 @@ exit(int status)
   // this also returns to the scheduler.
 
   struct proc *p = myproc();
-
-  acquire(&p->lock);
-  if (p->killed) {
+  if (proc_kill_if_alive(p, KILLED_DFL) < 0) {
     // the process was already killed, so we do not want to change anything else
-    release(&p->lock);
     return;
   }
-  proc_kill_core(p, status);
+  p->xstate = status;
   release(&p->lock);
-
   proc_kill_all_threads(p);
 }
 
 void
 exit_no_lock(struct proc *p, int status)
 {
-  if (!p->killed) {
-    proc_kill_core(p, status);
-    proc_kill_all_threads(p);
+  if (proc_kill_if_alive_no_locks(p, KILLED_DFL) < 0) {
+    // the process was already killed, so we do not want to change anything else
+    return;
   }
+  p->xstate = status;
+  proc_kill_all_threads(p);
 }
 
 // joins the current thread with the specified thread.
@@ -858,33 +893,53 @@ kthread_join(int thread_id, uint64 up_status)
   return res;
 }
 
-int
-proc_collapse_all_other_threads()
+void
+thread_wait_for_all_others(void)
 {
-  struct thread *t = mythread();
   struct thread *t_other;
+  struct thread *t = mythread();
   struct proc *p = t->process;
-
-  acquire(&p->lock);
-  if (p->killed) {
-    // some other thread has already killed the process and the rest of the threads.
-    release(&p->lock);
-    return -1;
-  }
-  p->killed = 2;
-  release(&p->lock);
-
-  proc_kill_all_threads_except(p, t);
   for (t_other = p->threads; t_other < ARR_END(p->threads); t_other++) {
     if (t_other != t) {
       acquire(&t_other->lock);
-      // if we have gotten this far, we have to commit on killing all
-      // other threads regardless if another thread managed to kill this thread.
+      // if we have gotten here, we have to wait for all other threads
+      // regardless if another thread managed to kill this thread.
       
       // the function releases the lock before returning
       kthread_join_core(t_other, t_other->tid, 0, 1);
     }
   }
+}
+
+void
+proc_reset_all_threads_except(struct proc *p, struct thread *t_exclude)
+{
+  struct thread *t;
+  struct trapframe *tf;
+  for (t = p->threads; t < ARR_END(p->threads); ++t) {
+    if (t != t_exclude) {
+      acquire(&t->lock);
+      tf = t->trapframe;
+      freethread(t);
+      t->trapframe = tf;
+      release(&t->lock);
+    }
+  }
+}
+
+int
+proc_collapse_all_other_threads()
+{
+  struct thread *t = mythread();
+  struct proc *p = t->process;
+
+  if (proc_kill_if_alive(p, KILLED_SPECIAL) < 0) {
+    return -1;
+  }
+  release(&p->lock);
+  proc_kill_all_threads_except(p, t);
+  thread_wait_for_all_others();
+  proc_reset_all_threads_except(p, t);
 
   // Reset killed status so that the following things can continue normally.
   // This thread is the only thread alive if the code has gotten to this point,
@@ -966,12 +1021,12 @@ scheduler(void)
     intr_on();
 
     for(p = proc; p < &proc[NPROC]; p++) {
-        acquire(&p->lock);
-        if (p->state != P_SCHEDULABLE) {
-          release(&p->lock);
-          continue;
-        }
+      acquire(&p->lock);
+      if (p->state != P_SCHEDULABLE) {
         release(&p->lock);
+        continue;
+      }
+      release(&p->lock);
 
       for (t = p->threads; t < ARR_END(p->threads); ++t) {
         acquire(&t->lock);
@@ -1191,6 +1246,7 @@ static char *process_states_names[] = {
   [P_SCHEDULABLE] "schedulable"
 };
 static char *threads_states_names[] = {
+  [T_UNUSED]   "unused",
   [T_USED]     "used",
   [T_SLEEPING] "sleeping",
   [T_RUNNABLE] "runnable",
@@ -1393,7 +1449,7 @@ proc_handle_special_signals(struct thread *t)
       printf("%d killed\n", p->pid);
       #endif
 
-      exit_no_lock(p, -1);
+      exit_no_lock(p, KILLED_DFL);
 
       // no other special signal matters.
       // see the note in trap.c on why not exit.

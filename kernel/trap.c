@@ -59,8 +59,9 @@ usertrap(void)
     // system call
     
     // THREADS-TODO: covert to multi-threads
-    if(THREAD_IS_KILLED(t))
-      kthread_exit(-1);
+    if(THREAD_IS_KILLED(t)) {
+      kthread_exit(KILLED_XSTATUS);
+    }
 
     // sepc points to the ecall instruction,
     // but we want to return to the next instruction.
@@ -76,11 +77,12 @@ usertrap(void)
   } else {
     printf("usertrap(): unexpected scause %p pid=%d tid=%d\n", r_scause(), t->process->pid, t->tid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
-    exit(-1);
+    exit(KILLED_XSTATUS);
   }
   
-  if(THREAD_IS_KILLED(t))
-    kthread_exit(-1);
+  if(THREAD_IS_KILLED(t)) {
+    kthread_exit(KILLED_XSTATUS);
+  }
 
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2) {
