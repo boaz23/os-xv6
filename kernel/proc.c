@@ -122,6 +122,45 @@ mythread(void) {
   return t;
 }
 
+void
+print_process_info(struct proc *p)
+{
+  printf("index:               %d\n", INDEX_OF_PROC(p));
+  printf("pid:                 %d\n", p->pid);
+  printf("state:               %d, %s\n", p->state, process_states_names[p->state]);
+  printf("killed:              %d\n", p->killed);
+  printf("xstate:              %d\n", p->xstate);
+  if (p->parent) {
+    printf("parent:              %d, %d\n", p->parent->pid, INDEX_OF_PROC(p));
+  }
+  else {
+    printf("parent:              no parent\n");
+  }
+  printf("sz:                  %x\n", p->sz);
+  printf("pagetable:           %x\n", *p->pagetable);
+  printf("ktrapframes page:    %p\n", p->kpage_trapframes);
+  printf("threads alive count: %d\n", p->threads_alive_count);
+  printf("freezed:             %d\n", p->freezed);
+  printf("in custom handler:   %d\n", p->in_custom_handler);
+  printf("\n");
+}
+
+void
+print_thread_info(struct thread *t)
+{
+  printf("index:               %d\n", INDEX_OF_THREAD(t));
+  printf("process:             %d, %d\n", t->process->pid, INDEX_OF_PROC(t->process));
+  printf("tid:                 %d\n", t->tid);
+  printf("state:               %d, %s\n", t->state, threads_states_names[t->state]);
+  printf("killed:              %d\n", t->killed);
+  printf("xstate:              %d\n", t->xstate);
+  printf("chan:                %p\n", t->chan);
+  printf("kstack:              %p\n", t->kstack);
+  printf("trapframe:           %d\n", t->trapframe);
+  printf("waiting_on_me_count: %d\n", t->waiting_on_me_count);
+  printf("\n");
+}
+
 // THREAD: find unused thread
 // finds an unused thread for the specified process.
 // returns a pointer to it with it's lock held.
@@ -317,6 +356,7 @@ freethread(struct thread *t)
   // THREAD: free the allocated kstack
   if (t != t->process->thread0 && t->kstack) {
     kfree(t->kstack);
+    t->kstack = 0;
   }
   t->chan = 0;
   t->killed = 0;
@@ -352,12 +392,15 @@ proc_free_all_threads_except(struct proc *p, struct thread *t_exclude)
 static void
 freeproc(struct proc *p)
 {
-  if(p->kpage_trapframes)
+  if(p->kpage_trapframes) {
     kfree(p->kpage_trapframes);
+  }
+  p->kpage_trapframes = 0;
   proc_free_all_threads_except(p, 0);
   p->backup_trapframe = 0;
-  if(p->pagetable)
+  if(p->pagetable) {
     proc_freepagetable(p->pagetable, p->sz);
+  }
   p->pagetable = 0;
   p->sz = 0;
   p->pid = 0;
