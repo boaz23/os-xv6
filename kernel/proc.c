@@ -18,7 +18,7 @@
 #define INDEX_OF_PROC(p) INDEX_OF((p), proc)
 #define INDEX_OF_THREAD(t) INDEX_OF(t, (t)->process->threads)
 
-#define TRACE_THREADS_LIFE
+// #define TRACE_THREADS_LIFE
 // #define PRINT_KR_SIGS
 
 struct cpu cpus[NCPU];
@@ -267,7 +267,9 @@ proc_find_unused_thread(struct proc *p)
   for(t = p->threads; t < ARR_END(p->threads); t++) {
     if (t != t_current) {
       acquire(&t->lock);
-      if(t->state == T_UNUSED) {
+      // the killed check is for the case where a thread is trying to
+      // collapse the rest of the threads like in exit or exec.
+      if(t->state == T_UNUSED && !t->killed) {
         return t;
       }
       else {
@@ -758,14 +760,13 @@ kthread_exit(int status)
       // thus p->xstate was already set beforehand by that thread.
     }
   }
-  release(&p->lock);
-
   acquire(&t->lock);
   t->xstate = status;
 
   if (should_exit) {
     trace_thread_act("kthread_exit", "last one alive, waiting for the rest...");
     release(&t->lock);
+    release(&p->lock);
     thread_wait_for_all_others();
     trace_thread_act("kthread_exit", "finishing the process");
     exit_core();
@@ -774,6 +775,7 @@ kthread_exit(int status)
     trace_thread_act("kthread_exit", "more threads remain");
     t->state = T_ZOMBIE;
     wakeup_proc_threads(p, t);
+    release(&p->lock);
     sched();
     panic("thread exited returned from scheduler.");
   }
@@ -840,6 +842,7 @@ exit(int status)
   // this also returns to the scheduler.
 
   struct proc *p = myproc();
+  trace_thread_act("exit", "enter");
   if (proc_kill_if_alive(p, KILLED_DFL) < 0) {
     // the process was already killed, so we do not want to change anything else
     return;
@@ -875,6 +878,7 @@ kthread_join_core(struct thread *t_joinee, int thread_id, uint64 up_status, int 
   struct thread *t_joiner = mythread();
   struct proc *p = t_joiner->process;
 
+  trace_thread_act_core("kthread_join_core", "joining thread", " %d", thread_id);
   if (t_joiner == t_joinee) {
     // the thread is trying to join himself.
     release(&t_joinee->lock);
@@ -1021,17 +1025,17 @@ proc_collapse_all_other_threads()
   struct thread *t = mythread();
   struct proc *p = t->process;
 
-  trace_thread_act("exec", "checking killed status (second time)");
+  trace_thread_act("collapse", "checking killed status (second time)");
   if (proc_kill_if_alive(p, KILLED_SPECIAL) < 0) {
-    trace_thread_act("exec", "process was already killed (second check)");
+    trace_thread_act("collapse", "process was already killed (second check)");
     return -1;
   }
-  trace_thread_act("exec", "killing other threads");
+  trace_thread_act("collapse", "killing other threads");
   release(&p->lock);
   proc_kill_all_threads_except(p, t);
-  trace_thread_act("exec", "waiting for them...");
+  trace_thread_act("collapse", "waiting for them...");
   thread_wait_for_all_others();
-  trace_thread_act("exec", "finished waiting");
+  trace_thread_act("collapse", "finished waiting");
   proc_reset_all_threads_except(p, t);
 
   // Reset killed status so that the following things can continue normally.
