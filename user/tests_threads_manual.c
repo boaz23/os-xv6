@@ -34,10 +34,33 @@ int run(void f(char *), char *s) {
   }
 }
 
-void
-error_exit(char *msg) {
+#define error_exit(msg) error_exit_core((msg), -1)
+void error_exit_core(char *msg, int xstatus) {
   print_test_error(test_name, msg);
-  exit(-1);
+  exit(xstatus);
+}
+
+void run_for(int ticks) {
+  int t0 = uptime();
+  int i = 0;
+  while (uptime() - t0 <= ticks) {
+    i++;
+  }
+}
+
+void test_create_thread_exit_simple_other_thread_func() {
+  printf("hello from other thread\n");
+  kthread_exit(6);
+}
+void test_create_thread_exit_simple(char *s) {
+  void *stack = malloc(STACK_SIZE);
+  if (kthread_create(test_create_thread_exit_simple_other_thread_func, stack) < 0) {
+    printf("failed to create a thread\n");
+    exit(-2);
+  }
+
+  printf("hello from main thread\n");
+  kthread_exit(-3);
 }
 
 void test_kthread_create_func(void) {
@@ -85,22 +108,32 @@ void test_kthread_create(char *s) {
   kthread_exit(0);
 }
 
-void test_create_thread_exit_simple_other_thread_func() {
-  printf("hello from other thread\n");
-  kthread_exit(6);
+void test_join_simple_func() {
+  int my_tid = kthread_id();
+  printf("thread %d started\n", my_tid);
+  run_for(2);
+  printf("thread %d exiting\n", my_tid);
+  kthread_exit(74);
 }
-void test_create_thread_exit_simple(char *s) {
+void test_join_simple(char *s) {
+  int other_tid;
+  int xstatus;
   void *stack = malloc(STACK_SIZE);
-  if (kthread_create(test_create_thread_exit_simple_other_thread_func, stack) < 0) {
-    printf("failed to create a thread\n");
-    exit(-2);
+  other_tid = kthread_create(test_join_simple_func, stack);
+  if (other_tid < 0) {
+    error_exit("kthread_create failed");
   }
 
-  printf("hello from main thread\n");
+  printf("created thread %d\n", other_tid);
+  if (kthread_join(other_tid, &xstatus) < 0) {
+    error_exit_core("join failed", -2);
+  }
+
+  printf("joined with thread %d, xstatus: %d\n", other_tid, xstatus);
   kthread_exit(-3);
 }
 
 void main(int argc, char *argv[]) {
-  run(test_kthread_create, "kthread_create");
+  run(test_join_simple, "kthread_create");
   exit(-5);
 }
