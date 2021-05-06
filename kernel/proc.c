@@ -19,7 +19,7 @@
 #define INDEX_OF_PROC(p) INDEX_OF((p), proc)
 #define INDEX_OF_THREAD(t) INDEX_OF(t, (t)->process->threads)
 
-#define TRACE_THREADS_LIFE
+// #define TRACE_THREADS_LIFE
 // #define PRINT_KR_SIGS
 
 struct cpu cpus[NCPU];
@@ -53,20 +53,20 @@ int is_valid_signum(int signum);
 int is_overridable_signum(int signum);
 
 void
-trace_thread_act_core(char *f, char *msg, char *fmt, ...)
+trace_thread_act_core(const char *f, const char *msg, const char *fmt, ...)
 {
   #ifdef TRACE_THREADS_LIFE
   va_list ap;
+  char esc[2] = { 27, 0 };
   struct thread *t = mythread();
   struct proc *p = t->process;
   if (p->pid >= 1 && p->pid <= 2) {
     return;
   }
-  printf("thread %d#%d-%d#%d - %s: %s", p->pid, INDEX_OF_PROC(p), t->tid, INDEX_OF_THREAD(t), f, msg);
+  printf("%s[34mthread %d#%d-%d#%d - %s: %s", esc, p->pid, INDEX_OF_PROC(p), t->tid, INDEX_OF_THREAD(t), f, msg);
   va_start(ap, fmt);
-  printf(fmt, ap);
-  va_end(ap);
-  printf("\n");
+  printf((char *)fmt, ap);
+  printf("%s[0m\n", esc);
   #endif
 }
 
@@ -742,7 +742,7 @@ kthread_exit(int status)
   struct proc *p = t->process;
   int should_exit = 0;
 
-  trace_thread_act("kthread_exit", "enter");
+  trace_thread_act_core("kthread_exit", "enter", " status %d", status);
   acquire(&p->lock);
   p->threads_alive_count--;
   if (p->threads_alive_count == 0) {

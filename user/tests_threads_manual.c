@@ -133,7 +133,28 @@ void test_join_simple(char *s) {
   kthread_exit(-3);
 }
 
+void test_join_self(char *s) {
+  int xstatus;
+  int other_tid;
+  void *stack = malloc(STACK_SIZE);
+  int my_tid = kthread_id();
+  printf("thread %d started\n", my_tid);
+  other_tid = kthread_create(test_join_simple_func, stack);
+  if (other_tid < 0) {
+    error_exit("kthread_create failed");
+  }
+  printf("created thread %d\n", other_tid);
+  if (kthread_join(other_tid, &xstatus) < 0) {
+    error_exit_core("join failed", -2);
+  }
+  if (kthread_join(my_tid, &xstatus) == 0) {
+    error_exit_core("join with self succeeded", -3);
+  }
+  
+  kthread_exit(-7);
+}
+
 void main(int argc, char *argv[]) {
-  run(test_join_simple, "kthread_create");
+  test_join_self("join_simple");
   exit(-5);
 }
