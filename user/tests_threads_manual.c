@@ -233,7 +233,7 @@ void exit_multiple_threads(char *s) {
   exit(9);
 }
 
-void max_threads(char *s) {
+void max_threads_exit(char *s) {
   void *stacks[NTHREAD - 1];
   int tids[NTHREAD - 1];
   void *last_stack;
@@ -256,18 +256,65 @@ void max_threads(char *s) {
   if ((last_stack = malloc(STACK_SIZE)) < 0) {
     error_exit("last malloc failed");
   }
-  // if (kthread_create(thread_func_run_forever, last_stack) >= 0) {
-  //   error_exit("created too many threads");
-  // }
-  // if (kthread_create(thread_func_run_forever, last_stack) >= 0) {
-  //   error_exit("created too many threads 2");
-  // }
+  if (kthread_create(thread_func_run_forever, last_stack) >= 0) {
+    error_exit("created too many threads");
+  }
+  if (kthread_create(thread_func_run_forever, last_stack) >= 0) {
+    error_exit("created too many threads 2");
+  }
   free(last_stack);
   
   print("going to sleep");
   sleep(5);
   print("exiting...");
   exit(8);
+}
+
+int shared = 0;
+void max_threads_join_func()
+{
+    sleep(1);
+    // printf("woke up\n");
+    shared++;
+    // printf("!!!!!!!!!!!!!!!!!!!!!!1\n");
+    kthread_exit(7);
+}
+
+void max_threads_join(char *s) {
+  int tids[NTHREAD - 1];
+  void *stacks[NTHREAD - 1];
+  for (int i = 0; i < NTHREAD - 1; i++) {
+    stacks[i] = malloc(STACK_SIZE);
+    if (stacks[i] < 0) {
+      error_exit("malloc failed");
+    }
+    tids[i] = kthread_create(max_threads_join_func, stacks[i]);
+    if (tids[i] < 0) {
+      error_exit("kthread_create failed");
+    }
+
+    print("created thread %d", tids[i]);
+  }
+  void *stack;
+  if ((stack = malloc(STACK_SIZE)) < 0) {
+    error_exit("last malloc failed");
+  }
+  if (kthread_create(max_threads_join_func, stack) >= 0) {
+    error_exit("created too many threads");
+  }
+  free(stack);
+
+  print("joining the rest...");
+  for (int i = 0; i < NTHREAD - 1; i++) {
+      int status;
+      if (kthread_join(tids[i], &status) < 0) {
+        error_exit("join failed");
+      }
+      free(stacks[i]);
+      print("status for %d: %d", tids[i], status);
+  }
+  print("shared: %d", shared);
+  exit(0);
 }
 
 void exec_multiple_threads(char *s) {
@@ -295,9 +342,9 @@ void exec_multiple_threads(char *s) {
 }
 
 void main(int argc, char *argv[]) {
-  // run(max_threads, "max_threads", 8);
+  // run(max_threads_exit, "max_threads_exit", 8);
   for (int i = 0; i < 100; i++) {
-    if (!run(max_threads, "max_threads", 8)) {
+    if (!run(max_threads_join, "max_threads_join", 0)) {
       break; 
     }
     sleep(5);
