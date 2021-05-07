@@ -1000,22 +1000,6 @@ thread_wait_for_all_others(void)
   }
 }
 
-void
-proc_reset_all_threads_except(struct proc *p, struct thread *t_exclude)
-{
-  struct thread *t;
-  struct trapframe *tf;
-  for (t = p->threads; t < ARR_END(p->threads); ++t) {
-    if (t != t_exclude) {
-      acquire(&t->lock);
-      tf = t->trapframe;
-      freethread(t);
-      t->trapframe = tf;
-      release(&t->lock);
-    }
-  }
-}
-
 int
 proc_collapse_all_other_threads()
 {
@@ -1033,7 +1017,6 @@ proc_collapse_all_other_threads()
   trace_thread_act("collapse", "waiting for them...");
   thread_wait_for_all_others();
   trace_thread_act("collapse", "finished waiting");
-  proc_reset_all_threads_except(p, t);
 
   // Reset killed status so that the following things can continue normally.
   // This thread is the only thread alive if the code has gotten to this point,
