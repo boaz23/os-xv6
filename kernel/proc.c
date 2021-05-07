@@ -226,9 +226,14 @@ int alloctid_lock(struct proc* proc)
 void
 thread_init(struct proc *p, struct thread *t)
 {
+  struct trapframe *ptf;
   t->tid = alloctid(p);
   t->state = T_USED;
   t->waiting_on_me_count = 0;
+
+  // set the trapframe pointer
+  ptf = (struct trapframe *)p->kpage_trapframes;
+  t->trapframe = ptf + INDEX_OF_THREAD(t) + 1;
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
@@ -317,7 +322,6 @@ static struct proc*
 allocproc(void)
 {
   struct proc *p;
-  struct thread *t0;
   struct trapframe *ptf;
 
   for(p = proc; p < &proc[NPROC]; p++) {
@@ -351,15 +355,9 @@ found:
     release(&p->lock);
     return 0;
   }
-
-  // Set the trapframe for each thread
-  // Also set the point to the thread process
-  ptf = (struct trapframe *)p->kpage_trapframes;
-  for(int i = 0; i < NTHREAD; i++){
-    p->threads[i].trapframe = ptf + i + 1;
-  }
   
   // TODO: where should the backup_trapframe be? in process or per thread
+  ptf = (struct trapframe *)p->kpage_trapframes;
   p->backup_trapframe = ptf;
   p->freezed = 0;
   p->pending_signals = 0;
@@ -370,8 +368,7 @@ found:
   }
 
   // THREADS: allocproc: init thread
-  t0 = p->thread0;
-  thread_init(p, t0);
+  thread_init(p, p->thread0);
 
   return p;
 }
