@@ -40,6 +40,11 @@ struct test {
   int repeat_count;
 };
 
+char *exec_simple_argv[] = {
+  "tests_threads_manual",
+  "--exec-test-simple-func",
+  0
+};
 char *exec_argv[] = {
   "tests_threads_manual",
   "--exec-test-func",
@@ -508,11 +513,55 @@ void max_threads_join_reverse(char *s) {
   exit(0);
 }
 
+void exec_test_simple_func() {
+  print("print after successful exec");
+  test_name = "exec simple thread create";
+  create_thread_exit_simple(test_name);
+  exit(6);
+}
+
 void exec_test_func() {
   print("print after successful exec");
-  test_name = "exec create thread simple";
-  create_thread_exit_simple("exec create thread simple");
+  test_name = "exec max threads join";
+  max_threads_join(test_name);
   exit(6);
+}
+
+void max_threads_exec_simple(char *s) {
+  void *stacks[NTHREAD - 1];
+  int tids[NTHREAD - 1];
+  void *last_stack;
+  int my_tid = kthread_id();
+
+  print("thread %d started", my_tid);
+  for (int i = 0; i < NTHREAD - 1; i++) {
+    stacks[i] = malloc(STACK_SIZE);
+    if (stacks[i] < 0) {
+      error_exit("malloc failed");
+    }
+    tids[i] = kthread_create(thread_func_run_forever, stacks[i]);
+    if (tids[i] < 0) {
+      error_exit("kthread_create failed");
+    }
+
+    print("created thread %d", tids[i]);
+  }
+
+  if ((last_stack = malloc(STACK_SIZE)) < 0) {
+    error_exit("last malloc failed");
+  }
+  if (kthread_create(thread_func_run_forever, last_stack) >= 0) {
+    error_exit("created too many threads");
+  }
+  if (kthread_create(thread_func_run_forever, last_stack) >= 0) {
+    error_exit("created too many threads 2");
+  }
+  free(last_stack);
+  
+  print("going to sleep");
+  sleep(5);
+  print("exec...");
+  exec(exec_simple_argv[0], exec_simple_argv);
 }
 
 void max_threads_exec(char *s) {
@@ -734,12 +783,18 @@ struct test tests[] = {
     .expected_exit_status = 0,
     .repeat_count = 10,
   },
-  // {
-  //   .f = max_threads_exec,
-  //   .name = "max_threads_exec",
-  //   .expected_exit_status = 0,
-  //   .repeat_count = 10
-  // },
+  {
+    .f = max_threads_exec_simple,
+    .name = "max_threads_exec_simple",
+    .expected_exit_status = 0,
+    .repeat_count = -1
+  },
+  {
+    .f = max_threads_exec,
+    .name = "max_threads_exec",
+    .expected_exit_status = 0,
+    .repeat_count = 10
+  },
   // {
   //   .f = max_threads_exec_they_exit_after_1,
   //   .name = "max_threads_exec_they_exit_after_1",
@@ -778,6 +833,9 @@ void main(int argc, char *argv[]) {
         success = 0;
       }
     }
+  }
+  else if (argc == 2 && strcmp(argv[1], exec_simple_argv[1]) == 0) {
+    exec_test_simple_func();
   }
   else if (argc == 2 && strcmp(argv[1], exec_argv[1]) == 0) {
     exec_test_func();
