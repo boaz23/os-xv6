@@ -5,6 +5,15 @@
 #include <stdarg.h>
 
 /*
+
+README:
+* Tests related to exec attempt to exec to this executable file.
+  Therefore, they need to be changed when changing the name of
+  this file.
+
+*/
+
+/*
 // TODO:
 * exit with multiple threads
 * too many threads (process has NTHREADS threads)
@@ -29,6 +38,12 @@ struct test {
   char *name;
   int expected_exit_status;
   int repeat_count;
+};
+
+char *exec_argv[] = {
+  "tests_threads_manual",
+  "--exec-test-func",
+  0
 };
 
 int pipe_fds[2];
@@ -58,26 +73,27 @@ int run(struct test *test) {
   test_name = test->name;
   expected_xstatus = test->expected_exit_status;
   printf("test %s:\n", test->name);
-  if((pid = fork()) < 0) {
-    printf("runtest: fork error\n");
-    exit(1);
-  }
-  if(pid == 0) {
-    for (int i = 0; i < test->repeat_count; i++) {
-      test->f(test->name);
+  for (int i = 0; i < test->repeat_count; i++) {
+    if((pid = fork()) < 0) {
+      printf("runtest: fork error\n");
+      exit(1);
     }
-    exit(0);
-  }
-  else {
-    wait(&xstatus);
-    if(xstatus != test->expected_exit_status)
-      printf("FAILED with status %d\n", xstatus);
-    else
-      printf("OK\n");
-    return xstatus == test->expected_exit_status;
+    if(pid == 0) {
+      test->f(test->name);
+      exit(0);
+    }
+    else {
+      wait(&xstatus);
+      if(xstatus != test->expected_exit_status) {
+        printf("FAILED with status %d, expected %d\n", xstatus, test->expected_exit_status);
+        return 0;
+      }
+    }
   }
   test_name = 0;
   expected_xstatus = 0;
+  printf("OK\n");
+  return 1;
 }
 
 #define error_exit(msg) error_exit_core((msg), -1)
@@ -109,24 +125,24 @@ void run_for(int ticks) {
 }
 
 void thread_func_run_forever() {
-  // int my_tid = kthread_id();
-  // print("thread %d started", my_tid);
+  int my_tid = kthread_id();
+  print("thread %d started", my_tid);
   run_forever();
 }
 void thread_func_run_for_5_xstatus_74() {
-  // int my_tid = kthread_id();
-  // print("thread %d started", my_tid);
+  int my_tid = kthread_id();
+  print("thread %d started", my_tid);
   run_for(5);
-  // print("thread %d exiting", my_tid);
+  print("thread %d exiting", my_tid);
   kthread_exit(74);
 }
 
 int shared = 0;
 void thread_func_sleep_for_1_xstatus_7() {
-    // int my_tid = kthread_id();
-    // print("thread %d started", my_tid);
+    int my_tid = kthread_id();
+    print("thread %d started", my_tid);
     sleep(1);
-    // print("thread %d woke up", my_tid);
+    print("thread %d woke up", my_tid);
     shared++;
     kthread_exit(7);
 }
@@ -134,6 +150,11 @@ void thread_func_sleep_for_1_xstatus_7() {
 void thread_func_exit_sleep_1_xstatus_98() {
   sleep(1);
   exit(98);
+}
+
+void thread_func_exec_sleep_1_xstatus_98() {
+  sleep(1);
+  exec(exec_argv[0], exec_argv);
 }
 
 void create_thread_exit_simple_other_thread_func() {
@@ -487,28 +508,163 @@ void max_threads_join_reverse(char *s) {
   exit(0);
 }
 
-void exec_multiple_threads(char *s) {
-  // int other_tid;
-  
-  // void *stack;
-  // int my_tid = kthread_id();
-  // print("thread %d started", my_tid);
+void exec_test_func() {
+  print("print after successful exec");
+  test_name = "exec create thread simple";
+  create_thread_exit_simple("exec create thread simple");
+  exit(6);
+}
 
-  // stack = malloc(STACK_SIZE);
-  // other_tid = kthread_create(thread_func_run_forever, stack);
-  // if (other_tid < 0) {
-  //   error_exit("kthread_create failed");
-  // }
-  // print("created thread %d", other_tid);
-  // stack = malloc(STACK_SIZE);
-  // other_tid = kthread_create(thread_func_run_forever, stack);
-  // if (other_tid < 0) {
-  //   error_exit("kthread_create failed");
-  // }
-  // print("created thread %d", other_tid);
-  // sleep(2);
-  // print("exec ''...");
-  // exec();
+void max_threads_exec(char *s) {
+  void *stacks[NTHREAD - 1];
+  int tids[NTHREAD - 1];
+  void *last_stack;
+  int my_tid = kthread_id();
+
+  print("thread %d started", my_tid);
+  for (int i = 0; i < NTHREAD - 1; i++) {
+    stacks[i] = malloc(STACK_SIZE);
+    if (stacks[i] < 0) {
+      error_exit("malloc failed");
+    }
+    tids[i] = kthread_create(thread_func_run_forever, stacks[i]);
+    if (tids[i] < 0) {
+      error_exit("kthread_create failed");
+    }
+
+    print("created thread %d", tids[i]);
+  }
+
+  if ((last_stack = malloc(STACK_SIZE)) < 0) {
+    error_exit("last malloc failed");
+  }
+  if (kthread_create(thread_func_run_forever, last_stack) >= 0) {
+    error_exit("created too many threads");
+  }
+  if (kthread_create(thread_func_run_forever, last_stack) >= 0) {
+    error_exit("created too many threads 2");
+  }
+  free(last_stack);
+  
+  print("going to sleep");
+  sleep(5);
+  print("exec...");
+  exec(exec_argv[0], exec_argv);
+}
+
+void max_threads_exec_they_exit_after_1(char *s) {
+  void *stacks[NTHREAD - 1];
+  int tids[NTHREAD - 1];
+  void *last_stack;
+  int my_tid = kthread_id();
+
+  print("thread %d started", my_tid);
+  for (int i = 0; i < NTHREAD - 1; i++) {
+    stacks[i] = malloc(STACK_SIZE);
+    if (stacks[i] < 0) {
+      error_exit("malloc failed");
+    }
+    tids[i] = kthread_create(thread_func_sleep_for_1_xstatus_7, stacks[i]);
+    if (tids[i] < 0) {
+      error_exit("kthread_create failed");
+    }
+
+    print("created thread %d", tids[i]);
+  }
+
+  if ((last_stack = malloc(STACK_SIZE)) < 0) {
+    error_exit("last malloc failed");
+  }
+  if (kthread_create(thread_func_sleep_for_1_xstatus_7, last_stack) >= 0) {
+    error_exit("created too many threads");
+  }
+  if (kthread_create(thread_func_sleep_for_1_xstatus_7, last_stack) >= 0) {
+    error_exit("created too many threads 2");
+  }
+  free(last_stack);
+  
+  print("going to sleep");
+  sleep(5);
+  print("exec...");
+  exec(exec_argv[0], exec_argv);
+}
+
+void max_threads_exec_by_created_they_run_forever(char *s) {
+  void *stacks[NTHREAD - 1];
+  int tids[NTHREAD - 1];
+  void *last_stack;
+  int my_tid = kthread_id();
+
+  print("thread %d started", my_tid);
+  for (int i = 0; i < NTHREAD - 1; i++) {
+    void (*f)();
+    stacks[i] = malloc(STACK_SIZE);
+    if (stacks[i] < 0) {
+      error_exit("malloc failed");
+    }
+    if (i == 5) {
+      f = thread_func_exec_sleep_1_xstatus_98;
+    }
+    else {
+      f = run_forever;
+    }
+    tids[i] = kthread_create(f, stacks[i]);
+    if (tids[i] < 0) {
+      error_exit("kthread_create failed");
+    }
+
+    print("created thread %d", tids[i]);
+  }
+
+  if ((last_stack = malloc(STACK_SIZE)) < 0) {
+    error_exit("last malloc failed");
+  }
+  if (kthread_create(thread_func_sleep_for_1_xstatus_7, last_stack) >= 0) {
+    error_exit("created too many threads");
+  }
+  free(last_stack);
+  
+  run_forever();
+  kthread_exit(8);
+}
+
+void max_threads_exec_by_created_they_exit_after_1(char *s) {
+  void *stacks[NTHREAD - 1];
+  int tids[NTHREAD - 1];
+  void *last_stack;
+  int my_tid = kthread_id();
+
+  print("thread %d started", my_tid);
+  for (int i = 0; i < NTHREAD - 1; i++) {
+    void (*f)();
+    stacks[i] = malloc(STACK_SIZE);
+    if (stacks[i] < 0) {
+      error_exit("malloc failed");
+    }
+    if (i == 5) {
+      f = thread_func_exec_sleep_1_xstatus_98;
+    }
+    else {
+      f = thread_func_sleep_for_1_xstatus_7;
+    }
+    tids[i] = kthread_create(f, stacks[i]);
+    if (tids[i] < 0) {
+      error_exit("kthread_create failed");
+    }
+
+    print("created thread %d", tids[i]);
+  }
+
+  if ((last_stack = malloc(STACK_SIZE)) < 0) {
+    error_exit("last malloc failed");
+  }
+  if (kthread_create(thread_func_sleep_for_1_xstatus_7, last_stack) >= 0) {
+    error_exit("created too many threads");
+  }
+  free(last_stack);
+  
+  sleep(1);
+  kthread_exit(8);
 }
 
 struct test tests[] = {
@@ -577,7 +733,31 @@ struct test tests[] = {
     .name = "max_threads_join_reverse",
     .expected_exit_status = 0,
     .repeat_count = 10,
-  }
+  },
+  // {
+  //   .f = max_threads_exec,
+  //   .name = "max_threads_exec",
+  //   .expected_exit_status = 0,
+  //   .repeat_count = 10
+  // },
+  // {
+  //   .f = max_threads_exec_they_exit_after_1,
+  //   .name = "max_threads_exec_they_exit_after_1",
+  //   .expected_exit_status = 0,
+  //   .repeat_count = 10
+  // },
+  // {
+  //   .f = max_threads_exec_by_created_they_run_forever,
+  //   .name = "max_threads_exec_by_created_they_run_forever",
+  //   .expected_exit_status = 0,
+  //   .repeat_count = 10
+  // },
+  // {
+  //   .f = max_threads_exec_by_created_they_exit_after_1,
+  //   .name = "max_threads_exec_by_created_they_exit_after_1",
+  //   .expected_exit_status = 0,
+  //   .repeat_count = 10
+  // },
 };
 
 struct test *find_test_by_name(char *name) {
@@ -598,6 +778,9 @@ void main(int argc, char *argv[]) {
         success = 0;
       }
     }
+  }
+  else if (argc == 2 && strcmp(argv[1], exec_argv[1]) == 0) {
+    exec_test_func();
   }
   else {
     // run tests specified by argv
