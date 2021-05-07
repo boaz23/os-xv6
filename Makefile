@@ -130,11 +130,11 @@ UPROGS=\
 	$U/_rm\
 	$U/_sh\
 	$U/_stressfs\
-	$U/_usertests_xv6\
 	$U/_grind\
 	$U/_wc\
 	$U/_zombie\
 	$U/_usertests\
+	# $U/_usertests_xv6\
 	# $U/_test_signals_manual\
 	# $U/_tests_threads_manual\
 
