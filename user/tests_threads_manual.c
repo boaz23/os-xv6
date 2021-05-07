@@ -716,6 +716,60 @@ void max_threads_exec_by_created_they_exit_after_1(char *s) {
   kthread_exit(8);
 }
 
+void max_threads_fork(char *s) {
+  int child_xstatus;
+  int child_pid;
+  void *stacks[NTHREAD - 1];
+  int tids[NTHREAD - 1];
+  void *last_stack;
+  int my_tid = kthread_id();
+
+  print("thread %d started", my_tid);
+  for (int i = 0; i < NTHREAD - 1; i++) {
+    stacks[i] = malloc(STACK_SIZE);
+    if (stacks[i] < 0) {
+      error_exit("malloc failed");
+    }
+    tids[i] = kthread_create(thread_func_run_forever, stacks[i]);
+    if (tids[i] < 0) {
+      error_exit("kthread_create failed");
+    }
+
+    print("created thread %d", tids[i]);
+  }
+
+  if ((last_stack = malloc(STACK_SIZE)) < 0) {
+    error_exit("last malloc failed");
+  }
+  if (kthread_create(thread_func_run_forever, last_stack) >= 0) {
+    error_exit("created too many threads");
+  }
+  if (kthread_create(thread_func_run_forever, last_stack) >= 0) {
+    error_exit("created too many threads 2");
+  }
+  free(last_stack);
+  
+  print("going to sleep");
+  sleep(5);
+  print("forking...");
+  child_pid = fork();
+  if (child_pid < 0) {
+    error_exit("fork failed");
+  }
+  else if (child_pid == 0) {
+    test_name = "fork max threads join";
+    max_threads_join(test_name);
+    exit(9);
+  }
+
+  print("waiting...");
+  if (wait(&child_xstatus) < 0) {
+    error_exit("wait failed");
+  }
+
+  exit(8);
+}
+
 struct test tests[] = {
   {
     .f = create_thread_exit_simple,
@@ -786,8 +840,8 @@ struct test tests[] = {
   {
     .f = max_threads_exec_simple,
     .name = "max_threads_exec_simple",
-    .expected_exit_status = 0,
-    .repeat_count = -1
+    .expected_exit_status = -1,
+    .repeat_count = 1
   },
   {
     .f = max_threads_exec,
@@ -795,24 +849,30 @@ struct test tests[] = {
     .expected_exit_status = 0,
     .repeat_count = 10
   },
-  // {
-  //   .f = max_threads_exec_they_exit_after_1,
-  //   .name = "max_threads_exec_they_exit_after_1",
-  //   .expected_exit_status = 0,
-  //   .repeat_count = 10
-  // },
-  // {
-  //   .f = max_threads_exec_by_created_they_run_forever,
-  //   .name = "max_threads_exec_by_created_they_run_forever",
-  //   .expected_exit_status = 0,
-  //   .repeat_count = 10
-  // },
-  // {
-  //   .f = max_threads_exec_by_created_they_exit_after_1,
-  //   .name = "max_threads_exec_by_created_they_exit_after_1",
-  //   .expected_exit_status = 0,
-  //   .repeat_count = 10
-  // },
+  {
+    .f = max_threads_exec_they_exit_after_1,
+    .name = "max_threads_exec_they_exit_after_1",
+    .expected_exit_status = 0,
+    .repeat_count = 10
+  },
+  {
+    .f = max_threads_exec_by_created_they_run_forever,
+    .name = "max_threads_exec_by_created_they_run_forever",
+    .expected_exit_status = 0,
+    .repeat_count = 10
+  },
+  {
+    .f = max_threads_exec_by_created_they_exit_after_1,
+    .name = "max_threads_exec_by_created_they_exit_after_1",
+    .expected_exit_status = 0,
+    .repeat_count = 10
+  },
+  {
+    .f = max_threads_fork,
+    .name = "max_threads_fork",
+    .expected_exit_status = 8,
+    .repeat_count = 3
+  },
 };
 
 struct test *find_test_by_name(char *name) {
