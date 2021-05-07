@@ -4,10 +4,6 @@
 #include "kernel/syscall.h"
 #include <stdarg.h>
 
-#define NTHREAD 8
-#define STDOUT 1
-void vprintf(int, const char*, va_list);
-
 /*
 // TODO:
 * exit with multiple threads
@@ -21,8 +17,19 @@ void vprintf(int, const char*, va_list);
 * exec when collpsing
 */
 
+#define NTHREAD 8
+#define STDOUT 1
+void vprintf(int, const char*, va_list);
+
 // #define ALLOW_PRINTING
 #define print_test_error(s, msg) printf("%s: %s\n", (s), (msg))
+
+struct test {
+  void (*f)(char *);
+  char *name;
+  int expected_exit_status;
+  int repeat_count;
+};
 
 int pipe_fds[2];
 int pipe_fds_2[2];
@@ -39,31 +46,38 @@ void print(char *fmt, ...) {
   #endif
 }
 
-int run(void f(char *), char *s, int exp_xstatus) {
+int run(struct test *test) {
   int pid;
   int xstatus;
 
-  printf("test %s:\n", s);
+  if (test->repeat_count <= 0) {
+    printf("RUN ERR: invalid repeat count (%d) for test %s. must be a positive value\n", test->repeat_count, test->name);
+    return 0;
+  }
+
+  test_name = test->name;
+  expected_xstatus = test->expected_exit_status;
+  printf("test %s:\n", test->name);
   if((pid = fork()) < 0) {
     printf("runtest: fork error\n");
     exit(1);
   }
   if(pid == 0) {
-    test_name = s;
-    expected_xstatus = exp_xstatus;
-    f(s);
-    test_name = 0;
-    expected_xstatus = 0;
+    for (int i = 0; i < test->repeat_count; i++) {
+      test->f(test->name);
+    }
     exit(0);
   }
   else {
     wait(&xstatus);
-    if(xstatus != exp_xstatus)
+    if(xstatus != test->expected_exit_status)
       printf("FAILED with status %d\n", xstatus);
     else
       printf("OK\n");
-    return xstatus == exp_xstatus;
+    return xstatus == test->expected_exit_status;
   }
+  test_name = 0;
+  expected_xstatus = 0;
 }
 
 #define error_exit(msg) error_exit_core((msg), -1)
@@ -86,7 +100,7 @@ void run_for_core(int ticks) {
   }
 }
 void run_for(int ticks) {
-  if (ticks < 0) {
+  if (ticks >= 0) {
     run_for_core(ticks);
   }
   else {
@@ -114,8 +128,7 @@ void create_thread_exit_simple_other_thread_func() {
 void create_thread_exit_simple(char *s) {
   void *stack = malloc(STACK_SIZE);
   if (kthread_create(create_thread_exit_simple_other_thread_func, stack) < 0) {
-    print("failed to create a thread");
-    exit(-2);
+    error_exit_core("failed to create a thread", -2);
   }
 
   print("hello from main thread");
@@ -126,13 +139,13 @@ void kthread_create_simple_func(void) {
   char c;
   print("pipes other thread: %d, %d", pipe_fds[0], pipe_fds[1]);
   if (read(pipe_fds[0], &c, 1) != 1) {
-    error_exit("pipe read - other thread failed");
+    error_exit_core("pipe read - other thread failed", -2);
   }
 
   print("hello from other thread");
 
   if (write(pipe_fds_2[1], "x", 1) < 0) {
-    error_exit("pipe write - other thread failed");
+    error_exit_core("pipe write - other thread failed", -3);
   }
 
   print("second thread exiting");
@@ -142,26 +155,26 @@ void kthread_create_simple(char *s) {
   void *other_thread_user_stack_pointer;
   char c;
   if (pipe(pipe_fds) < 0) {
-    error_exit("pipe failed");
+    error_exit_core("pipe failed", -4);
   }
   if (pipe(pipe_fds_2) < 0) {
-    error_exit("pipe 2 failed");
+    error_exit_core("pipe 2 failed", -5);
   }
   print("pipes main thread: %d, %d", pipe_fds[0], pipe_fds[1]);
   if ((other_thread_user_stack_pointer = malloc(STACK_SIZE)) < 0) {
-    error_exit("failed to allocate user stack");
+    error_exit_core("failed to allocate user stack", -6);
   }
   if (kthread_create(kthread_create_simple_func, other_thread_user_stack_pointer) < 0) {
-    error_exit("creating thread failed");
+    error_exit_core("creating thread failed", -8);
   }
 
   if (write(pipe_fds[1], "x", 1) < 0) {
-    error_exit("pipe write - main thread failed");
+    error_exit_core("pipe write - main thread failed", -9);
   }
   
   print("main thread after write");
   if (read(pipe_fds_2[0], &c, 1) != 1) {
-    error_exit("pipe read - main thread failed");
+    error_exit_core("pipe read - main thread failed", -10);
   }
   
   kthread_exit(0);
@@ -173,16 +186,16 @@ void join_simple(char *s) {
   void *stack = malloc(STACK_SIZE);
   other_tid = kthread_create(thread_func_run_for_5_xstatus_74, stack);
   if (other_tid < 0) {
-    error_exit("kthread_create failed");
+    error_exit_core("kthread_create failed", -2);
   }
 
   print("created thread %d", other_tid);
   if (kthread_join(other_tid, &xstatus) < 0) {
-    error_exit_core("join failed", -2);
+    error_exit_core("join failed", -3);
   }
 
-  print("joined with thread %d, xstatus: %d", other_tid, xstatus);
   free(stack);
+  print("joined with thread %d, xstatus: %d", other_tid, xstatus);
   kthread_exit(-3);
 }
 
@@ -194,14 +207,14 @@ void join_self(char *s) {
   print("thread %d started", my_tid);
   other_tid = kthread_create(thread_func_run_for_5_xstatus_74, stack);
   if (other_tid < 0) {
-    error_exit("kthread_create failed");
+    error_exit_core("kthread_create failed", -2);
   }
   print("created thread %d", other_tid);
   if (kthread_join(other_tid, &xstatus) < 0) {
-    error_exit_core("join failed", -2);
+    error_exit_core("join failed", -3);
   }
   if (kthread_join(my_tid, &xstatus) == 0) {
-    error_exit_core("join with self succeeded", -3);
+    error_exit_core("join with self succeeded", -4);
   }
   
   free(stack);
@@ -341,13 +354,90 @@ void exec_multiple_threads(char *s) {
   // exec();
 }
 
-void main(int argc, char *argv[]) {
-  // run(max_threads_exit, "max_threads_exit", 8);
-  for (int i = 0; i < 100; i++) {
-    if (!run(max_threads_join, "max_threads_join", 0)) {
-      break; 
-    }
-    sleep(5);
+struct test tests[] = {
+  {
+    .f = create_thread_exit_simple,
+    .name = "create_thread_exit_simple",
+    .expected_exit_status = -1,
+    .repeat_count = 1,
+  },
+  {
+    .f = kthread_create_simple,
+    .name = "kthread_create_simple",
+    .expected_exit_status = -1,
+    .repeat_count = 1,
+  },
+  {
+    .f = join_simple,
+    .name = "join_simple",
+    .expected_exit_status = -1,
+    .repeat_count = 1,
+  },
+  {
+    .f = join_self,
+    .name = "join_self",
+    .expected_exit_status = -1,
+    .repeat_count = 1
+  },
+  {
+    .f = exit_multiple_threads,
+    .name = "exit_multiple_threads",
+    .expected_exit_status = 9,
+    .repeat_count = 3
+  },
+  {
+    .f = max_threads_exit,
+    .name = "max_threads_exit",
+    .expected_exit_status = 8,
+    .repeat_count = 10
+  },
+  {
+    .f = max_threads_join,
+    .name = "max_threads_join",
+    .expected_exit_status = 0,
+    .repeat_count = 10
   }
-  exit(-5);
+};
+
+struct test *find_test_by_name(char *name) {
+  for (struct test *test = tests; test < &tests[sizeof(tests) / sizeof(tests[0])]; test++) {
+    if (strcmp(test->name, name) == 0) {
+      return test;
+    }
+  }
+  return 0;
+}
+
+void main(int argc, char *argv[]) {
+  int success = 1;
+  if (argc == 1) {
+    // run all
+    for (struct test *test = tests; test < &tests[sizeof(tests) / sizeof(tests[0])]; test++) {
+      if (!run(test)) {
+        success = 0;
+      }
+    }
+  }
+  else {
+    // run tests specified by argv
+    for (int i = 1; i < argc; i++) {
+      struct test *test = find_test_by_name(argv[i]);
+      if (!test) {
+        printf("ERR: could not find test with name %s\n", argv[i]);
+        continue;
+      }
+      if (!run(test)) {
+        success = 0;
+      }
+    }
+  }
+
+  if (success) {
+    printf("ALL TESTS PASSED\n");
+    exit(0);
+  }
+  else {
+    printf("SOME TESTS FAILED\n");
+    exit(1);
+  }
 }
