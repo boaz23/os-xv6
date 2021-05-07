@@ -1,5 +1,4 @@
 #include "signal.h"
-#include "threads.h"
 
 // Saved registers for kernel context switches.
 struct context {

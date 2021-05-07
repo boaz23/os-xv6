@@ -1,5 +1,5 @@
 #include "kernel/signal.h"
-#include "kernel/threads.h"
+#include "kernel/param.h"
 
 struct stat;
 struct rtcdate;
