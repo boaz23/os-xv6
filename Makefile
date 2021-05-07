@@ -14,6 +14,7 @@ OBJS = \
   $K/vm.o \
   $K/proc.o \
   $K/bsem.o \
+  $K/sysbsem.o \
   $K/swtch.o \
   $K/trampoline.o \
   $K/trap.o \
@@ -129,13 +130,13 @@ UPROGS=\
 	$U/_rm\
 	$U/_sh\
 	$U/_stressfs\
-	$U/_usertests\
+	$U/_usertests_xv6\
 	$U/_grind\
 	$U/_wc\
 	$U/_zombie\
-	$U/_test_signals_manual\
-	$U/_tests_threads_manual\
-	# $U/_usertests_official\
+	$U/_usertests\
+	# $U/_test_signals_manual\
+	# $U/_tests_threads_manual\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)

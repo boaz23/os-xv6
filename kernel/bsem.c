@@ -1,6 +1,8 @@
+#include "types.h"
+#include "param.h"
+#include "riscv.h"
 #include "spinlock.h"
 #include "defs.h"
-#include "param.h"
 
 enum bsem_life_state { BSEM_LIFE_UNUSED, BSEM_LIFE_USED };
 enum bsem_value { BSEM_VALUE_ACQUIRED, BSEM_VALUE_RELEASED };
@@ -16,6 +18,8 @@ int next_id;
 struct spinlock lock_bsem_table_life;
 struct bsem bsems[MAX_BSEM];
 
+void bsem_free_core(struct bsem*);
+
 void
 bseminit(void)
 {
@@ -27,12 +31,6 @@ bseminit(void)
     initlock(&bsem->lock_sync, "bsem_sync_lock");
     bsem_free_core(bsem);
   }
-}
-
-int
-is_valid_bsem_id(int bsem_id)
-{
-  return BSEM_INITIAL_ID <= bsem_id;
 }
 
 int
@@ -57,6 +55,12 @@ find_unused_bsem()
   return bsem_unused;
 }
 
+int
+is_valid_bsem_id(int bsem_id)
+{
+  return BSEM_INITIAL_ID <= bsem_id;
+}
+
 struct bsem*
 find_bsem_by_id(int bsem_id)
 {
@@ -78,30 +82,26 @@ struct bsem*
 get_bsem_for_op_by_id(int bsem_id)
 {
   struct bsem *bsem = 0;
-
-  if (!is_valid_bsem_id(bsem_id)) {
-    return 0;
-  }
-  bsem = find_bsem_by_id(bsem_id);
-  if (!bsem) {
+  if (is_valid_bsem_id(bsem_id)) {
+    bsem = find_bsem_by_id(bsem_id);
     release(&lock_bsem_table_life);
-    return 0;
   }
-  release(&lock_bsem_table_life);
   return bsem;
 }
 
 int
 bsem_alloc()
 {
+  int id = -1;
   struct bsem *bsem = find_unused_bsem();
   if (bsem) {
-    bsem->value = 1;
+    bsem->value = BSEM_VALUE_RELEASED;
     bsem->id = alloc_bsem_id();
     bsem->state = BSEM_LIFE_USED;
+    id = bsem->id;
+    release(&lock_bsem_table_life);
   }
-  release(&lock_bsem_table_life);
-  return bsem->id;
+  return id;
 }
 
 void
@@ -117,14 +117,13 @@ bsem_free(int bsem_id)
 {
   struct bsem *bsem;
   
-  if (!is_valid_bsem_id(bsem_id)) {
-    return;
+  if (is_valid_bsem_id(bsem_id)) {
+    bsem = find_bsem_by_id(bsem_id);
+    if (bsem) {
+      bsem_free_core(bsem);
+    }
+    release(&lock_bsem_table_life);
   }
-  bsem = find_bsem_by_id(bsem_id);
-  if (bsem) {
-    bsem_free_core(bsem);
-  }
-  release(&lock_bsem_table_life);
 }
 
 void

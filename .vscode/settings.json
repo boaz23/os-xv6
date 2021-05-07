@@ -16,6 +16,12 @@
         "proc.h": "c",
         "stdarg.h": "c",
         "signal.h": "c",
-        "spinlock.h": "c"
+        "spinlock.h": "c",
+        "cmath": "c",
+        "limits": "c",
+        "*.tcc": "c",
+        "typeinfo": "c",
+        "date.h": "c",
+        "defs.h": "c"
     }
 }
