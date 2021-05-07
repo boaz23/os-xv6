@@ -1,6 +1,7 @@
 #include <stdarg.h>
 
 struct buf;
+struct bsem;
 struct context;
 struct file;
 struct inode;
@@ -19,6 +20,13 @@ void            brelse(struct buf*);
 void            bwrite(struct buf*);
 void            bpin(struct buf*);
 void            bunpin(struct buf*);
+
+// bsem.c
+void            bseminit(void);
+int             bsem_alloc(void);
+void            bsem_free(int);
+void            bsem_down(int);
+void            bsem_up(int);
 
 // console.c
 void            consoleinit(void);

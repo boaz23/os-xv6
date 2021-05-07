@@ -13,6 +13,7 @@
 #define MAXPATH      128   // maximum file path name
 
 #define STACK_SIZE 4000
+#define MAX_BSEM   128
 
 #define ARR_LEN(a) (sizeof((a)) / sizeof((a)[0]))
 #define ARR_END(a) (&((a)[ARR_LEN(a)]))

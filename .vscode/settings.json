@@ -15,5 +15,7 @@
         "riscv.h": "c",
         "proc.h": "c",
         "stdarg.h": "c",
+        "signal.h": "c",
+        "spinlock.h": "c"
     }
 }
