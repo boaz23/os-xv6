@@ -109,16 +109,26 @@ void run_for(int ticks) {
 }
 
 void thread_func_run_forever() {
-  int my_tid = kthread_id();
-  print("thread %d started", my_tid);
+  // int my_tid = kthread_id();
+  // print("thread %d started", my_tid);
   run_forever();
 }
 void thread_func_run_for_5_xstatus_74() {
-  int my_tid = kthread_id();
-  print("thread %d started", my_tid);
+  // int my_tid = kthread_id();
+  // print("thread %d started", my_tid);
   run_for(5);
-  print("thread %d exiting", my_tid);
+  // print("thread %d exiting", my_tid);
   kthread_exit(74);
+}
+
+int shared = 0;
+void thread_func_run_for_1_xstatus_7() {
+    // int my_tid = kthread_id();
+    // print("thread %d started", my_tid);
+    sleep(1);
+    // print("thread %d woke up", my_tid);
+    shared++;
+    kthread_exit(7);
 }
 
 void create_thread_exit_simple_other_thread_func() {
@@ -283,16 +293,6 @@ void max_threads_exit(char *s) {
   exit(8);
 }
 
-int shared = 0;
-void max_threads_join_func()
-{
-    sleep(1);
-    // printf("woke up\n");
-    shared++;
-    // printf("!!!!!!!!!!!!!!!!!!!!!!1\n");
-    kthread_exit(7);
-}
-
 void max_threads_join(char *s) {
   int tids[NTHREAD - 1];
   void *stacks[NTHREAD - 1];
@@ -301,7 +301,7 @@ void max_threads_join(char *s) {
     if (stacks[i] < 0) {
       error_exit("malloc failed");
     }
-    tids[i] = kthread_create(max_threads_join_func, stacks[i]);
+    tids[i] = kthread_create(thread_func_run_for_1_xstatus_7, stacks[i]);
     if (tids[i] < 0) {
       error_exit("kthread_create failed");
     }
@@ -312,13 +312,50 @@ void max_threads_join(char *s) {
   if ((stack = malloc(STACK_SIZE)) < 0) {
     error_exit("last malloc failed");
   }
-  if (kthread_create(max_threads_join_func, stack) >= 0) {
+  if (kthread_create(thread_func_run_for_1_xstatus_7, stack) >= 0) {
     error_exit("created too many threads");
   }
   free(stack);
 
   print("joining the rest...");
   for (int i = 0; i < NTHREAD - 1; i++) {
+      int status;
+      if (kthread_join(tids[i], &status) < 0) {
+        error_exit("join failed");
+      }
+      free(stacks[i]);
+      print("status for %d: %d", tids[i], status);
+  }
+  print("shared: %d", shared);
+  exit(0);
+}
+
+void max_threads_join_reverse(char *s) {
+  int tids[NTHREAD - 1];
+  void *stacks[NTHREAD - 1];
+  for (int i = 0; i < NTHREAD - 1; i++) {
+    stacks[i] = malloc(STACK_SIZE);
+    if (stacks[i] < 0) {
+      error_exit("malloc failed");
+    }
+    tids[i] = kthread_create(thread_func_run_for_1_xstatus_7, stacks[i]);
+    if (tids[i] < 0) {
+      error_exit("kthread_create failed");
+    }
+
+    print("created thread %d", tids[i]);
+  }
+  void *stack;
+  if ((stack = malloc(STACK_SIZE)) < 0) {
+    error_exit("last malloc failed");
+  }
+  if (kthread_create(thread_func_run_for_1_xstatus_7, stack) >= 0) {
+    error_exit("created too many threads");
+  }
+  free(stack);
+
+  print("joining the rest...");
+  for (int i = NTHREAD - 2; i >= 0; i--) {
       int status;
       if (kthread_join(tids[i], &status) < 0) {
         error_exit("join failed");
@@ -377,25 +414,31 @@ struct test tests[] = {
     .f = join_self,
     .name = "join_self",
     .expected_exit_status = -1,
-    .repeat_count = 1
+    .repeat_count = 1,
   },
   {
     .f = exit_multiple_threads,
     .name = "exit_multiple_threads",
     .expected_exit_status = 9,
-    .repeat_count = 3
+    .repeat_count = 3,
   },
   {
     .f = max_threads_exit,
     .name = "max_threads_exit",
     .expected_exit_status = 8,
-    .repeat_count = 10
+    .repeat_count = 10,
   },
   {
     .f = max_threads_join,
     .name = "max_threads_join",
     .expected_exit_status = 0,
-    .repeat_count = 10
+    .repeat_count = 10,
+  },
+  {
+    .f = max_threads_join_reverse,
+    .name = "max_threads_join_reverse",
+    .expected_exit_status = 0,
+    .repeat_count = 10,
   }
 };
 
