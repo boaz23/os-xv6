@@ -13,3 +13,8 @@
 #define MAXPATH      128   // maximum file path name
 
 #define STACK_SIZE 4000
+
+#define ARR_LEN(a) (sizeof((a)) / sizeof((a)[0]))
+#define ARR_END(a) (&((a)[ARR_LEN(a)]))
+#define INDEX_OF(i, a) ((i) - (a))
+#define FOR_EACH(i, a) for (i = (a); i < ARR_END(a); i++)

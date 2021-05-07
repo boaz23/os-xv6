@@ -12,9 +12,6 @@
 // map kernel stacks beneath the trampoline,
 // each surrounded by invalid guard pages.
 #define KSTACK(p) ((void *)(TRAMPOLINE - (((p) - proc)+1)* 2*PGSIZE))
-#define ARR_LEN(a) (sizeof((a)) / sizeof((a)[0]))
-#define ARR_END(a) (&((a)[ARR_LEN(a)]))
-#define INDEX_OF(i, a) ((i) - (a))
 #define INDEX_OF_PROC(p) INDEX_OF((p), proc)
 #define INDEX_OF_THREAD(t) INDEX_OF(t, (t)->process->threads)
 
