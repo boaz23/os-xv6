@@ -3,6 +3,7 @@
 #include "riscv.h"
 #include "spinlock.h"
 #include "defs.h"
+#include "proc.h"
 
 enum bsem_life_state { BSEM_LIFE_UNUSED, BSEM_LIFE_USED };
 enum bsem_value { BSEM_VALUE_ACQUIRED, BSEM_VALUE_RELEASED };
@@ -18,7 +19,13 @@ int next_id;
 struct spinlock lock_bsem_table_life;
 struct bsem bsems[MAX_BSEM];
 
-void bsem_free_core(struct bsem*);
+void
+bsem_uninit(struct bsem *bsem)
+{
+  bsem->id = 0;
+  bsem->state = BSEM_LIFE_UNUSED;
+  bsem->value = 0;
+}
 
 void
 bseminit(void)
@@ -29,7 +36,7 @@ bseminit(void)
   initlock(&lock_bsem_table_life, "bsem_table_life_lock");
   FOR_EACH(bsem, bsems) {
     initlock(&bsem->lock_sync, "bsem_sync_lock");
-    bsem_free_core(bsem);
+    bsem_uninit(bsem);
   }
 }
 
@@ -37,16 +44,16 @@ struct bsem*
 find_unused_bsem()
 {
   struct bsem *bsem;
-  struct bsem *bsem_unused = 0;
   acquire(&lock_bsem_table_life);
+
   FOR_EACH(bsem, bsems) {
     if (bsem->state == BSEM_LIFE_UNUSED) {
-      bsem_unused = bsem;
-      break;
+      return bsem;
     }
   }
 
-  return bsem_unused;
+  release(&lock_bsem_table_life);
+  return 0;
 }
 
 int
@@ -56,11 +63,14 @@ alloc_bsem_id()
 }
 
 int
-bsem_init(struct bsem *bsem)
+bsem_alloc_core(struct bsem *bsem)
 {
   bsem->id = alloc_bsem_id();
   bsem->state = BSEM_LIFE_USED;
+  release(&lock_bsem_table_life);
+  acquire(&bsem->lock_sync);
   bsem->value = BSEM_VALUE_RELEASED;
+  release(&bsem->lock_sync);
   return bsem->id;
 }
 
@@ -70,8 +80,7 @@ bsem_alloc()
   int id = -1;
   struct bsem *bsem = find_unused_bsem();
   if (bsem) {
-    id = bsem_init(bsem);
-    release(&lock_bsem_table_life);
+    id = bsem_alloc_core(bsem);
   }
   return id;
 }
@@ -86,19 +95,20 @@ struct bsem*
 find_bsem_by_id(int bsem_id)
 {
   struct bsem *bsem;
-  struct bsem *bsem_found = 0;
 
   acquire(&lock_bsem_table_life);
+
   FOR_EACH(bsem, bsems) {
     if (bsem->id == bsem_id) {
       if (bsem->state == BSEM_LIFE_USED) {
-        bsem_found = bsem;
+        return bsem;
       }
       break;
     }
   }
 
-  return bsem_found;
+  release(&lock_bsem_table_life);
+  return 0;
 }
 
 struct bsem*
@@ -107,7 +117,6 @@ get_bsem_for_op_by_id(int bsem_id)
   struct bsem *bsem = 0;
   if (is_valid_bsem_id(bsem_id)) {
     bsem = find_bsem_by_id(bsem_id);
-    release(&lock_bsem_table_life);
   }
   return bsem;
 }
@@ -116,8 +125,12 @@ void
 bsem_free_core(struct bsem *bsem)
 {
   bsem->id = 0;
-  bsem->value = 0;
   bsem->state = BSEM_LIFE_UNUSED;
+  acquire(&bsem->lock_sync);
+  bsem->value = 0;
+  wakeup(bsem);
+  release(&bsem->lock_sync);
+  release(&lock_bsem_table_life);
 }
 
 void
@@ -125,12 +138,9 @@ bsem_free(int bsem_id)
 {
   struct bsem *bsem;
   
-  if (is_valid_bsem_id(bsem_id)) {
-    bsem = find_bsem_by_id(bsem_id);
-    if (bsem) {
-      bsem_free_core(bsem);
-    }
-    release(&lock_bsem_table_life);
+  bsem = get_bsem_for_op_by_id(bsem_id);
+  if (bsem) {
+    bsem_free_core(bsem);
   }
 }
 
@@ -143,9 +153,11 @@ bsem_has_changed(struct bsem *bsem, int bsem_id)
 void
 bsem_down_core(struct bsem *bsem, int bsem_id)
 {
+  struct thread *t = mythread();
   acquire(&bsem->lock_sync);
+  // up wakes all downed threads, so it has to be a while
   while (1) {
-    if (bsem_has_changed(bsem, bsem_id)) {
+    if (bsem_has_changed(bsem, bsem_id) || THREAD_IS_KILLED(t)) {
       release(&bsem->lock_sync);
       return;
     }
@@ -163,6 +175,7 @@ bsem_down(int bsem_id)
 {
   struct bsem *bsem = get_bsem_for_op_by_id(bsem_id);
   if (bsem) {
+    release(&lock_bsem_table_life);
     bsem_down_core(bsem, bsem_id);
   }
 }
@@ -183,6 +196,7 @@ bsem_up(int bsem_id)
 {
   struct bsem *bsem = get_bsem_for_op_by_id(bsem_id);
   if (bsem) {
+    release(&lock_bsem_table_life);
     bsem_up_core(bsem, bsem_id);
   }
 }
