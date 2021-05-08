@@ -49,7 +49,7 @@ int is_valid_signum(int signum);
 int is_overridable_signum(int signum);
 
 void
-trace_thread_act_core(const char *f, const char *msg, const char *fmt, ...)
+trace_thread_act(const char *f, const char *fmt, ...)
 {
   #ifdef TRACE_THREADS_LIFE
   va_list ap;
@@ -61,7 +61,7 @@ trace_thread_act_core(const char *f, const char *msg, const char *fmt, ...)
     return;
   }
   print_locking = print_acquire_lock();
-  printf_no_lock("%s[34mthread %d#%d-%d#%d - %s: %s", esc, p->pid, INDEX_OF_PROC(p), t->tid, INDEX_OF_THREAD(t), f, msg);
+  printf_no_lock("%s[34mthread %d#%d-%d#%d - %s: ", esc, p->pid, INDEX_OF_PROC(p), t->tid, INDEX_OF_THREAD(t), f);
   va_start(ap, fmt);
   vprintf_no_lock((char *)fmt, ap);
   va_end(ap);
@@ -575,7 +575,7 @@ kthread_create(uint64 start_func, uint64 up_usp)
   p->threads_alive_count++;
   release(&p->lock);
 
-  trace_thread_act_core("kthread_create", "created thread", " %d#%d-%d#%d", p->pid, INDEX_OF_PROC(p), nt->tid, INDEX_OF_THREAD(nt));
+  trace_thread_act("kthread_create", "created thread %d#%d-%d#%d", p->pid, INDEX_OF_PROC(p), nt->tid, INDEX_OF_THREAD(nt));
   tid = nt->tid;
   *nt->trapframe = *t->trapframe;
   nt->trapframe->epc = start_func;
@@ -741,7 +741,7 @@ kthread_exit(int status)
   struct proc *p = t->process;
   int should_exit = 0;
 
-  trace_thread_act_core("kthread_exit", "enter", " status %d", status);
+  trace_thread_act("kthread_exit", "enter status %d", status);
   acquire(&p->lock);
   p->threads_alive_count--;
   if (p->threads_alive_count == 0) {
@@ -872,7 +872,7 @@ kthread_join_core(struct thread *t_joinee, int thread_id, uint64 up_status, int 
   struct thread *t_joiner = mythread();
   struct proc *p = t_joiner->process;
 
-  trace_thread_act_core("kthread_join_core", "joining thread", " %d", thread_id);
+  trace_thread_act("kthread_join_core", "joining thread %d", thread_id);
   if (t_joiner == t_joinee) {
     // the thread is trying to join himself.
     release(&t_joinee->lock);
@@ -899,7 +899,7 @@ kthread_join_core(struct thread *t_joinee, int thread_id, uint64 up_status, int 
 
     // if this thread was killed, just quit and return an error.
     if (!force && THREAD_IS_KILLED(t_joiner)) {
-      trace_thread_act_core("kthread_join", "joining thread was killed", " (joinee %d)", thread_id);
+      trace_thread_act("kthread_join", "joining thread was killed (joinee %d)", thread_id);
       t_joinee->waiting_on_me_count--;
       release(&t_joinee->lock);
       return -2;
@@ -907,7 +907,7 @@ kthread_join_core(struct thread *t_joinee, int thread_id, uint64 up_status, int 
 
     // check whether the other thread exited
     if (t_joinee->state == T_ZOMBIE) {
-      trace_thread_act_core("kthread_join", "found zombie", " %d", thread_id);
+      trace_thread_act("kthread_join", "found zombie %d", thread_id);
       // copy the exit status
       if (up_status) {
         res = copyout(
@@ -917,7 +917,7 @@ kthread_join_core(struct thread *t_joinee, int thread_id, uint64 up_status, int 
           sizeof(t_joinee->xstate)
         );
         if (res < 0) {
-          trace_thread_act_core("kthread_join", "status copy failed", " (%d)", thread_id);
+          trace_thread_act("kthread_join", "status copy failed (%d)", thread_id);
           t_joinee->waiting_on_me_count--;
           release(&t_joinee->lock);
           return -1;
@@ -927,11 +927,11 @@ kthread_join_core(struct thread *t_joinee, int thread_id, uint64 up_status, int 
       t_joinee->waiting_on_me_count--;
       // free the thread only if the current thread is the last one
       if (t_joinee->waiting_on_me_count == 0) {
-        trace_thread_act_core("kthread_join", "freeing joinee thread", " %d", thread_id);
+        trace_thread_act("kthread_join", "freeing joinee thread %d", thread_id);
         freethread(t_joinee);
       }
       else {
-        trace_thread_act_core("kthread_join", "more threads waiting on thread", " %d", thread_id);
+        trace_thread_act("kthread_join", "more threads waiting on thread %d", thread_id);
       }
       release(&t_joinee->lock);
       return 0;
@@ -953,22 +953,22 @@ kthread_join(int thread_id, uint64 up_status)
 
   t_joiner = mythread();
   p = t_joiner->process;
-  trace_thread_act_core("kthread_join", "joining thread", " %d", thread_id);
+  trace_thread_act("kthread_join", "joining thread %d", thread_id);
   if (thread_id <= 0) {
     // invalid thread id
-    trace_thread_act_core("kthread_join", "invalid thread id", " %d", thread_id);
+    trace_thread_act("kthread_join", "invalid thread id %d", thread_id);
     return -1;
   }
 
   if (t_joiner->tid == thread_id) {
     // the thread is trying to join himself.
-    trace_thread_act_core("kthread_join", "attempt to join self", " (%d)", thread_id);
+    trace_thread_act("kthread_join", "attempt to join self (%d)", thread_id);
     return -1;
   }
 
   t_joinee = proc_find_thread_by_id(p, thread_id);
   if (!t_joinee) {
-    trace_thread_act_core("kthread_join", "", "thread %d not found", thread_id);
+    trace_thread_act("kthread_join", "thread %d not found", thread_id);
     return -1;
   }
   
