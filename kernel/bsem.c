@@ -69,8 +69,10 @@ find_bsem_by_id(int bsem_id)
 
   acquire(&lock_bsem_table_life);
   FOR_EACH(bsem, bsems) {
-    if (bsem->id == bsem_id && bsem->state == BSEM_LIFE_USED) {
-      bsem_found = bsem;
+    if (bsem->id == bsem_id) {
+      if (bsem->state == BSEM_LIFE_USED) {
+        bsem_found = bsem;
+      }
       break;
     }
   }
@@ -90,15 +92,21 @@ get_bsem_for_op_by_id(int bsem_id)
 }
 
 int
+bsem_init(struct bsem *bsem)
+{
+  bsem->id = alloc_bsem_id();
+  bsem->state = BSEM_LIFE_USED;
+  bsem->value = BSEM_VALUE_RELEASED;
+  return bsem->id;
+}
+
+int
 bsem_alloc()
 {
   int id = -1;
   struct bsem *bsem = find_unused_bsem();
   if (bsem) {
-    bsem->value = BSEM_VALUE_RELEASED;
-    bsem->id = alloc_bsem_id();
-    bsem->state = BSEM_LIFE_USED;
-    id = bsem->id;
+    id = bsem_init(bsem);
     release(&lock_bsem_table_life);
   }
   return id;
@@ -126,11 +134,24 @@ bsem_free(int bsem_id)
   }
 }
 
+int
+bsem_has_changed(struct bsem *bsem, int bsem_id)
+{
+  return bsem->state == BSEM_LIFE_UNUSED || bsem->id != bsem_id;
+}
+
 void
-bsem_down_core(struct bsem *bsem)
+bsem_down_core(struct bsem *bsem, int bsem_id)
 {
   acquire(&bsem->lock_sync);
-  while (bsem->value == BSEM_VALUE_ACQUIRED) {
+  while (1) {
+    if (bsem_has_changed(bsem, bsem_id)) {
+      release(&bsem->lock_sync);
+      return;
+    }
+    if (bsem->value == BSEM_VALUE_RELEASED) {
+      break;
+    }
     sleep(bsem, &bsem->lock_sync);
   }
   bsem->value = BSEM_VALUE_ACQUIRED;
@@ -141,14 +162,18 @@ void
 bsem_down(int bsem_id)
 {
   struct bsem *bsem = get_bsem_for_op_by_id(bsem_id);
-  bsem_down_core(bsem);
+  if (bsem) {
+    bsem_down_core(bsem, bsem_id);
+  }
 }
 
 void
-bsem_up_core(struct bsem *bsem)
+bsem_up_core(struct bsem *bsem, int bsem_id)
 {
   acquire(&bsem->lock_sync);
-  bsem->value = BSEM_VALUE_RELEASED;
+  if (!bsem_has_changed(bsem, bsem_id)) {
+    bsem->value = BSEM_VALUE_RELEASED;
+  }
   wakeup(bsem);
   release(&bsem->lock_sync);
 }
@@ -157,5 +182,7 @@ void
 bsem_up(int bsem_id)
 {
   struct bsem *bsem = get_bsem_for_op_by_id(bsem_id);
-  bsem_up_core(bsem);
+  if (bsem) {
+    bsem_up_core(bsem, bsem_id);
+  }
 }
