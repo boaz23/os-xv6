@@ -1358,6 +1358,8 @@ procdump(void)
   }
 }
 
+#define filter_sig_mask(sigmask) ((sigmask) & (~((1 << SIGKILL) | (1 << SIGSTOP))))
+
 uint
 sigprocmask(uint sigmask)
 {
@@ -1371,8 +1373,7 @@ sigprocmask(uint sigmask)
   // custom handler ends.
   old_mask = p->signal_mask;
 
-  // do not block SIGKILL and SIGSTOP
-  p->signal_mask = sigmask & (~((1 << SIGKILL) | (1 << SIGSTOP)));
+  p->signal_mask = filter_sig_mask(sigmask);
   release(&p->lock);
 
   return old_mask;
@@ -1405,7 +1406,7 @@ int sigaction(int signum, uint64 act_addr, uint64 old_act_addr){
       return -1;
     }
     p->signal_handlers[signum] = new_act.sa_handler;
-    p->signal_handles_mask[signum] = new_act.sigmask;
+    p->signal_handles_mask[signum] = filter_sig_mask(new_act.sigmask);
   }
 
   release(&p->lock);
@@ -1430,7 +1431,7 @@ sigret(void){
 int
 is_valid_signum(int signum)
 {
-  return signum >= 0 && signum < MAX_SIG;
+  return  0 <= signum && signum < MAX_SIG;
 }
 
 int
@@ -1439,7 +1440,7 @@ is_overridable_signum(int signum)
   return is_valid_signum(signum) && signum != SIGKILL && signum != SIGSTOP;
 }
 
-void check_not_overriden(struct proc *p, int signum, char *sig_name)
+void check_signal_not_overriden(struct proc *p, int signum, char *sig_name)
 {
   if (p->signal_handlers[signum] != SIG_DFL ||
       p->signal_mask & (1 << signum) ||
@@ -1481,12 +1482,12 @@ proc_handle_special_signals(struct thread *t)
       }
 
       if (signum == SIGKILL) {
-        check_not_overriden(p, SIGKILL, "SIGKILL");
+        check_signal_not_overriden(p, SIGKILL, "SIGKILL");
         p->pending_signals &= ~(1 << signum);
         killed = 1;
       }
       else if (signum == SIGSTOP) {
-        check_not_overriden(p, SIGSTOP, "SIGSTOP");
+        check_signal_not_overriden(p, SIGSTOP, "SIGSTOP");
         p->pending_signals &= ~(1 << signum);
         p->freezed = 1;
       }
