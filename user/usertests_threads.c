@@ -5,12 +5,7 @@
 #include <stdarg.h>
 
 /*
-
-README:
-* Tests related to exec attempt to exec to this executable file.
-  Therefore, they need to be changed when changing the name of
-  this file.
-
+README: TODO
 */
 
 /*
@@ -41,12 +36,12 @@ struct test {
 };
 
 char *exec_simple_argv[] = {
-  "tests_threads_manual",
+  "<placeholder>",
   "--exec-test-simple-func",
   0
 };
 char *exec_argv[] = {
-  "tests_threads_manual",
+  "<placeholder>",
   "--exec-test-func",
   0
 };
@@ -894,6 +889,8 @@ struct test *find_test_by_name(char *name) {
 
 void main(int argc, char *argv[]) {
   int success = 1;
+  exec_argv[0] = argv[0];
+  exec_simple_argv[0] = argv[0];
   if (argc == 1) {
     // run all
     for (struct test *test = tests; test < &tests[sizeof(tests) / sizeof(tests[0])]; test++) {
