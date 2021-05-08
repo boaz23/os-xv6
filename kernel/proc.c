@@ -339,6 +339,7 @@ found:
   p->killed = 0;
   p->next_tid = 1;
   p->threads_alive_count = 1;
+  p->special_signum_handling = -1;
 
   // Allocate a trapframe page.
   if((p->kpage_trapframes = kalloc()) == 0){
@@ -1363,8 +1364,8 @@ procdump(void)
 uint
 sigprocmask(uint sigmask)
 {
-  struct proc *p = myproc();
   uint old_mask;
+  struct proc *p = myproc();
 
   acquire(&p->lock);
   // TODO: what should happen in the case where this is called during
@@ -1372,7 +1373,6 @@ sigprocmask(uint sigmask)
   // Right now, this value is only changed temporarily until the
   // custom handler ends.
   old_mask = p->signal_mask;
-
   p->signal_mask = filter_sig_mask(sigmask);
   release(&p->lock);
 
@@ -1450,6 +1450,22 @@ void check_signal_not_overriden(struct proc *p, int signum, char *sig_name)
   }
 }
 
+uint
+proc_get_sigmask(struct proc *p)
+{
+  uint mask;
+  if (p->in_custom_handler) {
+    mask = p->signal_mask;
+  }
+  else if (p->special_signum_handling >= 0) {
+    mask = p->signal_handles_mask[p->special_signum_handling];
+  }
+  else {
+    mask = p->signal_mask;
+  }
+  return mask;
+}
+
 // TODO: what if the signal is ignore and blocked (both at the same time)?
 //       meanwhile, ignore overtakes blocked.
 // TODO: how to handle SIGCONT in the following cases (or any valid combination of them):
@@ -1462,6 +1478,7 @@ proc_handle_special_signals(struct thread *t)
 {
   int continued;
   int killed;
+  int freezed;
   #ifdef PRINT_KR_SIGS
   int prev_freezed;
   #endif
@@ -1471,6 +1488,7 @@ proc_handle_special_signals(struct thread *t)
   while (1) {
     continued = 0;
     killed = 0;
+    freezed = 0;
     #ifdef PRINT_KR_SIGS
     prev_freezed = p->freezed;
     #endif
@@ -1485,34 +1503,59 @@ proc_handle_special_signals(struct thread *t)
         check_signal_not_overriden(p, SIGKILL, "SIGKILL");
         p->pending_signals &= ~(1 << signum);
         killed = 1;
+        break;
       }
       else if (signum == SIGSTOP) {
+        if (freezed) {
+          continue;
+        }
         check_signal_not_overriden(p, SIGSTOP, "SIGSTOP");
         p->pending_signals &= ~(1 << signum);
         p->freezed = 1;
+        freezed = 1;
+        p->special_signum_handling = signum;
       }
       else {
         handler = p->signal_handlers[signum];
 
-        // ignored?
-        if(handler == (void *)SIG_IGN){
-          p->pending_signals &= ~(1 << signum);
-          continue;
-        }
-
         // blocked?
-        if(p->signal_mask & (1 << signum)){
+        if (proc_get_sigmask(p) & (1 << signum)) {
           continue;
         }
 
         if ((signum == SIGCONT && handler == (void *)SIG_DFL) || handler == (void *)SIGCONT) {
+          // ignored?
+          if(handler == (void *)SIG_IGN){
+            p->pending_signals &= ~(1 << signum);
+            continue;
+          }
+
           continued = 1;
+          p->special_signum_handling = -1;
         }
         else if (handler == (void *)SIGKILL || (signum != SIGCONT && handler == (void *)SIG_DFL)) {
+          // ignored?
+          if(handler == (void *)SIG_IGN){
+            p->pending_signals &= ~(1 << signum);
+            continue;
+          }
+
           killed = 1;
+          break;
         }
         else if (handler == (void *)SIGSTOP) {
+          if (freezed) {
+            continue;
+          }
+
+          // ignored?
+          if(handler == (void *)SIG_IGN){
+            p->pending_signals &= ~(1 << signum);
+            continue;
+          }
+
           p->freezed = 1;
+          p->special_signum_handling = signum;
         }
         else {
           // custom user handler
