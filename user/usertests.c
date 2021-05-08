@@ -2954,9 +2954,6 @@ void test_sigstop_sigkill(char *s) {
   }
   close(pfds_1[0]);
   close(pfds_2[1]);
-  if (wait(0) < 0) {
-    printf("%s: wait failed\n", s);
-  }
   exit(0);
 }
 
@@ -3035,9 +3032,6 @@ void test_sigstop_then_sigcont(char *s) {
   }
   close(pfds_1[0]);
   close(pfds_2[1]);
-  if (wait(0) < 0){
-    printf("%s: wait failed\n");
-  }
   exit(0);
 }
 
@@ -3170,6 +3164,189 @@ test_sigprocmask_special(char *s)
   exit(0);
 }
 
+int pipe_fds[2];
+void
+test_sigaction_custom_handlers_func_1(int signum)
+{
+  if (signum != 5) {
+    printf("handler 1 - bad signum\n");
+    exit(2);
+  }
+  if (write(pipe_fds[1], "x", 1) != 1) {
+    printf("child pipe write failed\n");
+    exit(1);
+  }
+}
+void
+test_sigaction_custom_handlers_func_2(int signum)
+{
+  if (signum != 5) {
+    printf("handler 2 - bad signum\n");
+    exit(2);
+  }
+  if (write(pipe_fds[1], "1", 1) != 1) {
+    printf("child pipe write failed\n");
+    exit(1);
+  }
+}
+
+// This tests attempts to register a custom signal handler,
+// fork, send the child the signal, check that it actuall writes to the pipe.
+// the child then changes to another signal handler, the parent checks that
+// it writes another character to the pipe.
+// then the child changes to the previous handler and we do the pipe thing again.
+void
+test_sigaction_fork_custom_handlers(char *s)
+{
+  struct sigaction act;
+  struct sigaction old_act;
+  int child_pid;
+  char pipe_buf;
+  int signum = 5;
+  int sigmask_1 = (1 << 28) | (1 << 20);
+  int sigmask_2 = (1 << 21) | (1 << 4);
+  if (pipe(pipe_fds) < 0) {
+    printf("%s: pipe failed\n", s);
+    exit(1);
+  }
+  act.sa_handler = test_sigaction_custom_handlers_func_1;
+  act.sigmask = sigmask_1;
+  if (sigaction(signum, &act, &old_act) != 0) {
+    printf("%s: first sigaction failed\n", s);
+    exit(1);
+  }
+  child_pid = fork();
+  if (child_pid < 0) {
+    printf("%s: fork failed\n", s);
+    exit(1);
+  }
+  else if (child_pid == 0) {
+    // child
+    if (close(pipe_fds[0]) < 0) {
+      printf("%s: child close failed\n", s);
+      exit(1);
+    }
+    sleep(10);
+
+    act.sa_handler = test_sigaction_custom_handlers_func_2;
+    act.sigmask = sigmask_2;
+    if (sigaction(signum, &act, &old_act) < 0) {
+      printf("%s: sigaction 2 failed\n", s);
+      exit(1);
+    }
+    if (old_act.sa_handler != test_sigaction_custom_handlers_func_1) {
+      printf("%s: got back bad old sa handler\n", s);
+      exit(1);
+    }
+    if (old_act.sigmask != sigmask_1) {
+      printf("%s: got back bad old sigmask\n", s);
+      exit(1);
+    }
+
+    if (write(pipe_fds[1], "z", 1) != 1) {
+      printf("%s: child pipe write to advance failed\n", s);
+      exit(1);
+    }
+    sleep(10);
+
+    act = old_act;
+    if (sigaction(signum, &act, &old_act) < 0) {
+      printf("%s: sigaction 3 failed\n", s);
+      exit(1);
+    }
+    if (old_act.sa_handler != test_sigaction_custom_handlers_func_2) {
+      printf("%s: got back bad old sa handler 3\n", s);
+      exit(1);
+    }
+    if (old_act.sigmask != sigmask_2) {
+      printf("%s: got back bad old sigmask 3\n", s);
+      exit(1);
+    }
+
+    if (write(pipe_fds[1], "z", 1) != 1) {
+      printf("%s: child pipe write to advance failed\n", s);
+      exit(1);
+    }
+    sleep(10);
+
+    exit(0);
+  }
+  else {
+    // parent
+    if (close(pipe_fds[1]) < 0) {
+      printf("%s: parent close failed\n", s);
+      exit(1);
+    }
+    if (kill(child_pid, signum) < 0) {
+      printf("%s: killed failed, terminating child\n", s);
+      kill(child_pid, SIGKILL);
+      printf("%s: waiting");
+      wait(0);
+      exit(1);
+    }
+    if (read(pipe_fds[0], &pipe_buf, 1) != 1) {
+      printf("%s: first pipe read failed\n", s);
+      exit(1);
+    }
+    if (pipe_buf != 'x') {
+      printf("%s: first value from pipe is wrong\n", s);
+      exit(1);
+    }
+
+    if (read(pipe_fds[0], &pipe_buf, 1) != 1) {
+      printf("%s: pipe read to advance failed\n", s);
+      exit(1);
+    }
+    
+    if (kill(child_pid, signum) < 0) {
+      printf("%s: killed 2 failed, terminating child\n", s);
+      kill(child_pid, SIGKILL);
+      printf("%s: waiting");
+      wait(0);
+      exit(1);
+    }
+    if (read(pipe_fds[0], &pipe_buf, 1) != 1) {
+      printf("%s: second pipe read failed\n", s);
+      exit(1);
+    }
+    if (pipe_buf != '1') {
+      printf("%s: second value from pipe is wrong\n", s);
+      exit(1);
+    }
+
+    if (read(pipe_fds[0], &pipe_buf, 1) != 1) {
+      printf("%s: pipe read to advance 2 failed\n", s);
+      exit(1);
+    }
+
+    if (kill(child_pid, signum) < 0) {
+      printf("%s: killed 3 failed, terminating child\n", s);
+      kill(child_pid, SIGKILL);
+      printf("%s: waiting");
+      wait(0);
+      exit(1);
+    }
+    if (read(pipe_fds[0], &pipe_buf, 1) != 1) {
+      printf("%s: first pipe read failed\n", s);
+      exit(1);
+    }
+    if (pipe_buf != 'x') {
+      printf("%s: first value from pipe is wrong\n", s);
+      exit(1);
+    }
+
+    if (close(pipe_fds[0]) < 0) {
+      printf("%s: parent close read pipe failed\n", s);
+      exit(1);
+    }
+    if (wait(0) != child_pid) {
+      printf("%s: bad wait\n", s);
+      exit(1);
+    }
+    exit(0);
+  }
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -3204,6 +3381,7 @@ main(int argc, char *argv[])
     {test_sigcont_then_stop, "sigcont_then_stop"},
     {test_sigprocmask_simple, "sigprocmask_simple"},
     {test_sigprocmask_special, "sigprocmask_special"},
+    {test_sigaction_fork_custom_handlers, "sigaction_fork_custom_handlers"},
 	  
 // ASS 1 tests
 //	{stracetest,"stracetest"},    //18 ticks, need to compare inputs
