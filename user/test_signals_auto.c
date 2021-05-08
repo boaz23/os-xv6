@@ -2,10 +2,10 @@
 #include "user/user.h"
 #include "kernel/fcntl.h"
 
-void test_sigkill() {
+void test_sigkill(char *s) {
   int pid_child = fork();
   if (pid_child < 0) {
-    printf("fork failed\n");
+    printf("%s: fork failed\n", s);
     exit(1);
   }
   else if (pid_child == 0) {
@@ -15,7 +15,7 @@ void test_sigkill() {
   else {
     // parent
     if (kill(pid_child, SIGKILL) < 0) {
-      printf("kill failed\n");
+      printf("%s: kill failed\n", s);
       exit(1);
     }
     wait(0);
@@ -70,11 +70,11 @@ void test_sigstop_sigkill(char *s) {
   
   // parent
   if (kill(pid_child, SIGSTOP) < 0) {
-    printf("stop failed\n");
+    printf("%s: stop failed\n", s);
     exit(1);
   }
   if (sleep(1) < 0) {
-    printf("sleep failed\n");
+    printf("%s: sleep failed\n", s);
     exit(1);
   }
   if (write(pfds_2[1], "x", 1) != 1) {
@@ -82,15 +82,15 @@ void test_sigstop_sigkill(char *s) {
     exit(1);
   }
   if (kill(pid_child, SIGKILL) < 0) {
-    printf("kill failed\n");
+    printf("%s: kill failed\n", s);
     exit(1);
   }
   if (wait(&status) != pid_child) {
-    printf("got wierd child pid from wait\n");
+    printf("%s: got wierd child pid from wait\n", s);
     exit(1);
   }
   if (status != -1) {
-    printf("child didn't get killed\n");
+    printf("%s: child didn't get killed\n", s);
   }
   close(pfds_1[0]);
   close(pfds_2[1]);
@@ -145,19 +145,19 @@ void test_sigstop_then_sigcont(char *s) {
   
   // parent
   if (kill(pid_child, SIGSTOP) < 0) {
-    printf("stop failed\n");
+    printf("%s: stop failed\n", s);
     exit(1);
   }
   if (sleep(1) < 0) {
-    printf("sleep failed\n");
+    printf("%s: sleep failed\n", s);
     exit(1);
   }
   if (kill(pid_child, SIGCONT) < 0) {
-    printf("stop failed\n");
+    printf("%s: stop failed\n", s);
     exit(1);
   }
   if (sleep(1) < 0) {
-    printf("sleep failed\n");
+    printf("%s: sleep failed\n", s);
     exit(1);
   }
   if (write(pfds_2[1], "x", 1) != 1) {
@@ -165,11 +165,11 @@ void test_sigstop_then_sigcont(char *s) {
     exit(1);
   }
   if (wait(&status) != pid_child) {
-    printf("got wierd child pid from wait\n");
+    printf("%s: got wierd child pid from wait\n", s);
     exit(1);
   }
   if (status != 5) {
-    printf("child didn't continue properly\n");
+    printf("%s: child didn't continue properly\n", s);
   }
   close(pfds_1[0]);
   close(pfds_2[1]);
@@ -187,35 +187,35 @@ void test_sigstop_x2(char *s) {
   else if (pid_child > 0) {
     // parent
     if (kill(pid_child, SIGSTOP) < 0) {
-      printf("stop failed\n");
+      printf("%s: stop failed\n", s);
       exit(1);
     }
     if (kill(pid_child, SIGSTOP) < 0) {
-      printf("stop 2 failed\n");
+      printf("%s: stop 2 failed\n", s);
       exit(1);
     }
     if (sleep(3) < 0) {
-      printf("sleep failed\n");
+      printf("%s: sleep failed\n", s);
       exit(1);
     }
     if (kill(pid_child, SIGCONT) < 0) {
-      printf("cont failed\n");
+      printf("%s: cont failed\n", s);
       exit(1);
     }
     if (sleep(1) < 0) {
-      printf("sleep failed\n");
+      printf("%s: sleep failed\n", s);
       exit(1);
     }
     if (kill(pid_child, SIGKILL) < 0) {
-      printf("kill failed\n");
+      printf("%s: kill failed\n", s);
       exit(1);
     }
     if (wait(&status) != pid_child) {
-      printf("wait failed\n");
+      printf("%s: wait failed\n", s);
       exit(1);
     }
     if (status != -1) {
-      printf("child exited with wrong status\n");
+      printf("%s: child exited with wrong status\n", s);
       exit(1);
     }
     exit(0);
@@ -223,7 +223,7 @@ void test_sigstop_x2(char *s) {
   else {
     // child
     for (int c = 0; ; c++) {
-      printf("%d\n", c);
+      
     }
   }
 }
@@ -238,31 +238,31 @@ void test_sigcont_then_stop(char *s) {
   else if (pid_child > 0) {
     // parent
     if (kill(pid_child, SIGCONT) < 0) {
-      printf("stop failed\n");
+      printf("%s: stop failed\n", s);
       exit(1);
     }
     if (sleep(1) < 0) {
-      printf("sleep failed\n");
+      printf("%s: sleep failed\n", s);
       exit(1);
     }
     if (kill(pid_child, SIGSTOP) < 0) {
-      printf("stop 2 failed\n");
+      printf("%s: stop 2 failed\n", s);
       exit(1);
     }
     if (sleep(10) < 0) {
-      printf("sleep 2 failed\n");
+      printf("%s: sleep 2 failed\n", s);
       exit(1);
     }
     if (kill(pid_child, SIGKILL) < 0) {
-      printf("kill failed\n");
+      printf("%s: kill failed\n", s);
       exit(1);
     }
     if (wait(&status) != pid_child) {
-      printf("wait failed\n");
+      printf("%s: wait failed\n", s);
       exit(1);
     }
     if (status != -1) {
-      printf("child exited with wrong status\n");
+      printf("%s: child exited with wrong status\n", s);
       exit(1);
     }
     exit(0);
@@ -270,7 +270,6 @@ void test_sigcont_then_stop(char *s) {
   else {
     // child
     for (int c = 0; ; c++) {
-      printf("%d\n", c);
     }
   }
 }

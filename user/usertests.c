@@ -2858,6 +2858,318 @@ run(void f(char *), char *s) {
   }
 }
 
+void test_sigkill(char *s) {
+  int pid_child = fork();
+  if (pid_child < 0) {
+    printf("%s: fork failed\n", s);
+    exit(1);
+  }
+  else if (pid_child == 0) {
+    // child
+    for (int c = 0; ; c++) { }
+  }
+  else {
+    // parent
+    if (kill(pid_child, SIGKILL) < 0) {
+      printf("%s: kill failed\n", s);
+      exit(1);
+    }
+    if (wait(0) < 0) {
+      printf("%s: wait failed\n");
+      exit(1);
+    }
+
+    exit(0);
+  }
+}
+
+void test_sigstop_sigkill(char *s) {
+  int pfds_1[2];
+  int pfds_2[2];
+  int pid_child;
+  char buf[8];
+  char buf_child[8];
+  int t0;
+  int status;
+
+  pipe(pfds_1);
+  pipe(pfds_2);
+  pid_child = fork();
+  if(pid_child < 0) {
+     printf("%s: fork failed\n", s);
+     exit(1);
+  }
+
+  if (pid_child > 0) {
+    close(pfds_1[1]);
+    close(pfds_2[0]);
+    if(read(pfds_1[0], buf, 1) != 1){
+      printf("%s: preempt read error", s);
+      exit(1);
+    }
+  }
+
+  if(pid_child == 0) {
+    close(pfds_1[0]);
+    close(pfds_2[1]);
+    if(write(pfds_1[1], "x", 1) != 1) {
+      printf("%s: child write error", s);
+      exit(1);
+    }
+    close(pfds_1[1]);
+
+    t0 = uptime();
+    for (int c = 0; uptime() - t0 < 2; c++) { }
+    if (read(pfds_2[0], buf_child, 1) == 1) {
+      close(pfds_2[0]);
+      exit(0);
+    }
+    close(pfds_2[0]);
+    exit(2);
+  }
+  
+  // parent
+  if (kill(pid_child, SIGSTOP) < 0) {
+    printf("%s: stop failed\n", s);
+    exit(1);
+  }
+  if (sleep(1) < 0) {
+    printf("%s: sleep failed\n", s);
+    exit(1);
+  }
+  if (write(pfds_2[1], "x", 1) != 1) {
+    printf("%s: parent write error", s);
+    exit(1);
+  }
+  if (kill(pid_child, SIGKILL) < 0) {
+    printf("%s: kill failed\n", s);
+    exit(1);
+  }
+  if (wait(&status) != pid_child) {
+    printf("%s: got wierd child pid from wait\n", s);
+    exit(1);
+  }
+  if (status != -1) {
+    printf("%s: child didn't get killed\n", s);
+  }
+  close(pfds_1[0]);
+  close(pfds_2[1]);
+  if (wait(0) < 0) {
+    printf("%s: wait failed\n", s);
+  }
+  exit(0);
+}
+
+void test_sigstop_then_sigcont(char *s) {
+  int pfds_1[2];
+  int pfds_2[2];
+  int pid_child;
+  char buf[8];
+  char buf_child[8];
+  int t0;
+  int status;
+
+  pipe(pfds_1);
+  pipe(pfds_2);
+  pid_child = fork();
+  if(pid_child < 0) {
+     printf("%s: fork failed\n", s);
+     exit(1);
+  }
+
+  if (pid_child > 0) {
+    close(pfds_1[1]);
+    close(pfds_2[0]);
+    if(read(pfds_1[0], buf, 1) != 1){
+      printf("%s: preempt read error", s);
+      exit(1);
+    }
+  }
+
+  if(pid_child == 0) {
+    close(pfds_1[0]);
+    close(pfds_2[1]);
+    if(write(pfds_1[1], "x", 1) != 1) {
+      printf("%s: child write error", s);
+      exit(1);
+    }
+    close(pfds_1[1]);
+
+    t0 = uptime();
+    for (int c = 0; uptime() - t0 < 2; c++) { }
+    if (read(pfds_2[0], buf_child, 1) == 1) {
+      close(pfds_2[0]);
+      exit(5);
+    }
+    close(pfds_2[0]);
+    exit(2);
+  }
+  
+  // parent
+  if (kill(pid_child, SIGSTOP) < 0) {
+    printf("%s: stop failed\n", s);
+    exit(1);
+  }
+  if (sleep(1) < 0) {
+    printf("%s: sleep failed\n", s);
+    exit(1);
+  }
+  if (kill(pid_child, SIGCONT) < 0) {
+    printf("%s: stop failed\n", s);
+    exit(1);
+  }
+  if (sleep(1) < 0) {
+    printf("%s: sleep failed\n", s);
+    exit(1);
+  }
+  if (write(pfds_2[1], "x", 1) != 1) {
+    printf("%s: parent write error", s);
+    exit(1);
+  }
+  if (wait(&status) != pid_child) {
+    printf("%s: got wierd child pid from wait\n", s);
+    exit(1);
+  }
+  if (status != 5) {
+    printf("%s: child didn't continue properly\n", s);
+  }
+  close(pfds_1[0]);
+  close(pfds_2[1]);
+  if (wait(0) < 0){
+    printf("%s: wait failed\n");
+  }
+  exit(0);
+}
+
+void test_sigstop_x2(char *s) {
+  int status;
+  int pid_child = fork();
+  if (pid_child < 0) {
+    printf("%s: fork failed\n", s);
+    exit(1);
+  }
+  else if (pid_child > 0) {
+    // parent
+    if (kill(pid_child, SIGSTOP) < 0) {
+      printf("%s: stop failed\n", s);
+      exit(1);
+    }
+    if (kill(pid_child, SIGSTOP) < 0) {
+      printf("%s: stop 2 failed\n", s);
+      exit(1);
+    }
+    if (sleep(3) < 0) {
+      printf("%s: sleep failed\n", s);
+      exit(1);
+    }
+    if (kill(pid_child, SIGCONT) < 0) {
+      printf("%s: cont failed\n", s);
+      exit(1);
+    }
+    if (sleep(1) < 0) {
+      printf("%s: sleep failed\n", s);
+      exit(1);
+    }
+    if (kill(pid_child, SIGKILL) < 0) {
+      printf("%s: kill failed\n", s);
+      exit(1);
+    }
+    if (wait(&status) != pid_child) {
+      printf("%s: wait failed\n", s);
+      exit(1);
+    }
+    if (status != -1) {
+      printf("%s: child exited with wrong status\n", s);
+      exit(1);
+    }
+    exit(0);
+  }
+  else {
+    // child
+    for (int c = 0; ; c++) {
+      
+    }
+  }
+}
+
+void test_sigcont_then_stop(char *s) {
+  int status;
+  int pid_child = fork();
+  if (pid_child < 0) {
+    printf("%s: fork failed\n", s);
+    exit(1);
+  }
+  else if (pid_child > 0) {
+    // parent
+    if (kill(pid_child, SIGCONT) < 0) {
+      printf("%s: stop failed\n", s);
+      exit(1);
+    }
+    if (sleep(1) < 0) {
+      printf("%s: sleep failed\n", s);
+      exit(1);
+    }
+    if (kill(pid_child, SIGSTOP) < 0) {
+      printf("%s: stop 2 failed\n", s);
+      exit(1);
+    }
+    if (sleep(10) < 0) {
+      printf("%s: sleep 2 failed\n", s);
+      exit(1);
+    }
+    if (kill(pid_child, SIGKILL) < 0) {
+      printf("%s: kill failed\n", s);
+      exit(1);
+    }
+    if (wait(&status) != pid_child) {
+      printf("%s: wait failed\n", s);
+      exit(1);
+    }
+    if (status != -1) {
+      printf("%s: child exited with wrong status\n", s);
+      exit(1);
+    }
+    exit(0);
+  }
+  else {
+    // child
+    for (int c = 0; ; c++) {
+    }
+  }
+}
+
+void
+test_sigprocmask_simple(char *s)
+{
+  uint mask = 0x45796523;
+  if (sigprocmask(mask) != 0) {
+    printf("%s: initial sigmask returned was not 0\n");
+    exit(1);
+  }
+  if (sigprocmask(1) != mask) {
+    printf("%s: mask was not properly\n");
+    exit(1);
+  }
+  exit(0);
+}
+
+// tests that SIGKILL and SIGSTOP cannot be blocked
+// and that SIGCONT can be blocked.
+void
+test_sigprocmask_special(char *s)
+{
+  uint mask = 0x45796523 | (1 << SIGCONT);
+  if (sigprocmask((1 << SIGKILL) | (1 << SIGSTOP) | mask) != 0) {
+    printf("%s: initial sigmask returned was not 0\n");
+    exit(1);
+  }
+  if (sigprocmask(1) != mask) {
+    printf("%s: mask was not properly\n");
+    exit(1);
+  }
+  exit(0);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -2880,10 +3192,18 @@ main(int argc, char *argv[])
     char *s;
   } tests[] = {
 	  //ASS 2 Compilation tests:
-	  {signal_test,"signal_test"},
-	  {thread_test,"thread_test"},
-	  {bsem_test,"bsem_test"},
-	  {Csem_test,"Csem_test"},
+	  // {signal_test,"signal_test"},
+	  // {thread_test,"thread_test"},
+	  // {bsem_test,"bsem_test"},
+	  // {Csem_test,"Csem_test"},
+
+    {test_sigkill, "sigkill"},
+    {test_sigstop_sigkill, "sigstop_kill"},
+    {test_sigstop_then_sigcont, "sigstop_then_cont"},
+    {test_sigstop_x2, "sigstop_x2"},
+    {test_sigcont_then_stop, "sigcont_then_stop"},
+    {test_sigprocmask_simple, "sigprocmask_simple"},
+    {test_sigprocmask_special, "sigprocmask_special"},
 	  
 // ASS 1 tests
 //	{stracetest,"stracetest"},    //18 ticks, need to compare inputs
@@ -2983,8 +3303,9 @@ main(int argc, char *argv[])
   }
 
   printf("usertests starting\n");
-  int free0 = countfree();
-  int free1 = 0;
+  // TODO: do not forget to uncomment
+  // int free0 = countfree();
+  // int free1 = 0;
   int fail = 0;
   for (struct test *t = tests; t->s != 0; t++) {
     if((justone == 0) || strcmp(t->s, justone) == 0) {
@@ -2996,10 +3317,12 @@ main(int argc, char *argv[])
   if(fail){
     printf("SOME TESTS FAILED\n");
     exit(1);
-  } else if((free1 = countfree()) < free0){
-    printf("FAILED -- lost some free pages %d (out of %d)\n", free1, free0);
-    exit(1);
-  } else {
+  }
+  // else if((free1 = countfree()) < free0){
+  //   printf("FAILED -- lost some free pages %d (out of %d)\n", free1, free0);
+  //   exit(1);
+  // }
+  else {
     printf("ALL TESTS PASSED\n");
     exit(0);
   }
