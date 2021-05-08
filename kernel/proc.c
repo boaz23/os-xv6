@@ -1617,6 +1617,7 @@ proc_handle_special_signals(struct thread *t)
 int
 proc_find_custom_signal_handler(struct proc *p, struct sigaction *user_action, int *p_signum)
 {
+  void *handler;
   for(int signum = 0; signum < MAX_SIG; signum++){
     // pending?
     if(!((1 << signum) & p->pending_signals)){
@@ -1625,6 +1626,15 @@ proc_find_custom_signal_handler(struct proc *p, struct sigaction *user_action, i
 
     // blocked?
     if(p->signal_mask & (1 << signum)){
+      continue;
+    }
+
+    handler = p->signal_handlers[signum];
+    // guard against magically unhandled signals
+    if (
+      handler == (void *)SIG_DFL || handler == (void *)SIGCONT ||
+      handler == (void *)SIGKILL || handler == (void *)SIGSTOP
+    ) {
       continue;
     }
     
