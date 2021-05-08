@@ -849,12 +849,12 @@ exit(int status)
 }
 
 void
-exit_no_lock(struct proc *p, int status)
+exit_special_no_lock(struct proc *p, int status)
 {
-  if (proc_kill_if_alive_no_locks(p, KILLED_DFL) < 0) {
-    // the process was already killed, so we do not want to change anything else
+  if (p->killed && p->killed != KILLED_SPECIAL) {
     return;
   }
+  p->killed = KILLED_DFL;
   p->xstate = status;
   proc_kill_all_threads(p);
 }
@@ -1528,7 +1528,7 @@ proc_handle_special_signals(struct thread *t)
       printf("%d killed\n", p->pid);
       #endif
 
-      exit_no_lock(p, KILLED_DFL);
+      exit_special_no_lock(p, KILLED_XSTATUS);
 
       // no other special signal matters.
       // see the note in trap.c on why not exit.
