@@ -15,6 +15,8 @@
 #define INDEX_OF_PROC(p) INDEX_OF((p), proc)
 #define INDEX_OF_THREAD(t) INDEX_OF(t, (t)->process->threads)
 
+#define KTHREAD_JOIN_FAILED_THREAD_KILLED -2
+
 // #define TRACE_THREADS_LIFE
 // #define PRINT_KR_SIGS
 
@@ -35,7 +37,7 @@ static void freeproc(struct proc *p);
 static void freethread(struct thread *t);
 void exit_core();
 void wakeup_proc_threads(struct proc *p, void *chan);
-void thread_wait_for_all_others(void);
+int thread_wait_for_all_others(void);
 
 extern char trampoline[]; // trampoline.S
 
@@ -866,7 +868,7 @@ exit_no_lock(struct proc *p, int status)
 //        If force is non-zero, the function doesn't return when the joining thread
 //        (the thread running the function) is killed.
 int
-kthread_join_core(struct thread *t_joinee, int thread_id, uint64 up_status, int force)
+kthread_join_core(struct thread *t_joinee, int thread_id, uint64 up_status)
 {
   int res = 0;
   struct thread *t_joiner = mythread();
@@ -898,11 +900,11 @@ kthread_join_core(struct thread *t_joinee, int thread_id, uint64 up_status, int 
     }
 
     // if this thread was killed, just quit and return an error.
-    if (!force && THREAD_IS_KILLED(t_joiner)) {
+    if (THREAD_IS_KILLED(t_joiner)) {
       trace_thread_act("kthread_join", "joining thread was killed (joinee %d)", thread_id);
       t_joinee->waiting_on_me_count--;
       release(&t_joinee->lock);
-      return -2;
+      return KTHREAD_JOIN_FAILED_THREAD_KILLED;
     }
 
     // check whether the other thread exited
@@ -972,14 +974,14 @@ kthread_join(int thread_id, uint64 up_status)
     return -1;
   }
   
-  res = kthread_join_core(t_joinee, thread_id, up_status, 0);
+  res = kthread_join_core(t_joinee, thread_id, up_status);
   if (res < 0) {
     res = -1;
   }
   return res;
 }
 
-void
+int
 thread_wait_for_all_others(void)
 {
   struct thread *t_other;
@@ -988,13 +990,15 @@ thread_wait_for_all_others(void)
   for (t_other = p->threads; t_other < ARR_END(p->threads); t_other++) {
     if (t_other != t) {
       acquire(&t_other->lock);
-      // if we have gotten here, we have to wait for all other threads
-      // regardless if another thread managed to kill this thread.
-      
       // the function releases the lock before returning
-      kthread_join_core(t_other, t_other->tid, 0, 1);
+      if (kthread_join_core(t_other, t_other->tid, 0) == KTHREAD_JOIN_FAILED_THREAD_KILLED) {
+        // should only be possible if the process got a signal which caused it to get killed
+        // and the code did not get here because of exit
+        return -1;
+      }
     }
   }
+  return 0;
 }
 
 int
@@ -1012,7 +1016,9 @@ proc_collapse_all_other_threads()
   release(&p->lock);
   proc_kill_all_threads_except(p, t);
   trace_thread_act("collapse", "waiting for them...");
-  thread_wait_for_all_others();
+  if (thread_wait_for_all_others() < 0) {
+    return -1;
+  }
   trace_thread_act("collapse", "finished waiting");
 
   // Reset killed status so that the following things can continue normally.

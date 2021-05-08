@@ -116,6 +116,7 @@ exec(char *path, char **argv)
   // THREADS: exec all killing other threads
   if (proc_collapse_all_other_threads() < 0) {
     // this thread isn't the first to kill the process
+    // or the process got a signal which caused it to get killed
     goto bad;
   }
 
