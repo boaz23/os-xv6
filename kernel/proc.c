@@ -852,9 +852,6 @@ exit(int status)
 void
 exit_special_no_lock(struct proc *p, int status)
 {
-  if (p->killed && p->killed != KILLED_SPECIAL) {
-    return;
-  }
   p->killed = KILLED_DFL;
   p->xstate = status;
   proc_kill_all_threads(p);
@@ -1018,6 +1015,7 @@ proc_collapse_all_other_threads()
   proc_kill_all_threads_except(p, t);
   trace_thread_act("collapse", "waiting for them...");
   if (thread_wait_for_all_others() < 0) {
+    trace_thread_act("collapse", "executing thread got killed");
     return -1;
   }
   trace_thread_act("collapse", "finished waiting");
@@ -1571,7 +1569,11 @@ proc_handle_special_signals(struct thread *t)
       printf("%d killed\n", p->pid);
       #endif
 
-      exit_special_no_lock(p, KILLED_XSTATUS);
+      // if p->killed is set, then some other thread set it,
+      // therefore we should not mess with it, just quit.
+      if (killed) {
+        exit_special_no_lock(p, KILLED_XSTATUS);
+      }
 
       // no other special signal matters.
       // see the note in trap.c on why not exit.
