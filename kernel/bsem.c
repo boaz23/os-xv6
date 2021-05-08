@@ -15,9 +15,11 @@ struct bsem {
 };
 
 #define BSEM_INITIAL_ID 1
-int next_id;
-struct spinlock lock_bsem_table_life;
-struct bsem bsems[MAX_BSEM];
+struct bsem_table {
+  int next_id;
+  struct spinlock lock_life;
+  struct bsem bsems[MAX_BSEM];
+} bsem_table;
 
 void
 bsem_uninit(struct bsem *bsem)
@@ -32,9 +34,9 @@ bseminit(void)
 {
   struct bsem *bsem;
 
-  next_id = BSEM_INITIAL_ID;
-  initlock(&lock_bsem_table_life, "bsem_table_life_lock");
-  FOR_EACH(bsem, bsems) {
+  bsem_table.next_id = BSEM_INITIAL_ID;
+  initlock(&bsem_table.lock_life, "bsem_table_life_lock");
+  FOR_EACH(bsem, bsem_table.bsems) {
     initlock(&bsem->lock_sync, "bsem_sync_lock");
     bsem_uninit(bsem);
   }
@@ -44,22 +46,22 @@ struct bsem*
 find_unused_bsem()
 {
   struct bsem *bsem;
-  acquire(&lock_bsem_table_life);
+  acquire(&bsem_table.lock_life);
 
-  FOR_EACH(bsem, bsems) {
+  FOR_EACH(bsem, bsem_table.bsems) {
     if (bsem->state == BSEM_LIFE_UNUSED) {
       return bsem;
     }
   }
 
-  release(&lock_bsem_table_life);
+  release(&bsem_table.lock_life);
   return 0;
 }
 
 int
 alloc_bsem_id()
 {
-  return next_id++;
+  return bsem_table.next_id++;
 }
 
 int
@@ -67,7 +69,7 @@ bsem_alloc_core(struct bsem *bsem)
 {
   bsem->id = alloc_bsem_id();
   bsem->state = BSEM_LIFE_USED;
-  release(&lock_bsem_table_life);
+  release(&bsem_table.lock_life);
   acquire(&bsem->lock_sync);
   bsem->value = BSEM_VALUE_RELEASED;
   release(&bsem->lock_sync);
@@ -96,9 +98,9 @@ find_bsem_by_id(int bsem_id)
 {
   struct bsem *bsem;
 
-  acquire(&lock_bsem_table_life);
+  acquire(&bsem_table.lock_life);
 
-  FOR_EACH(bsem, bsems) {
+  FOR_EACH(bsem, bsem_table.bsems) {
     if (bsem->id == bsem_id) {
       if (bsem->state == BSEM_LIFE_USED) {
         return bsem;
@@ -107,7 +109,7 @@ find_bsem_by_id(int bsem_id)
     }
   }
 
-  release(&lock_bsem_table_life);
+  release(&bsem_table.lock_life);
   return 0;
 }
 
@@ -130,7 +132,7 @@ bsem_free_core(struct bsem *bsem)
   bsem->value = 0;
   wakeup(bsem);
   release(&bsem->lock_sync);
-  release(&lock_bsem_table_life);
+  release(&bsem_table.lock_life);
 }
 
 void
@@ -175,7 +177,7 @@ bsem_down(int bsem_id)
 {
   struct bsem *bsem = get_bsem_for_op_by_id(bsem_id);
   if (bsem) {
-    release(&lock_bsem_table_life);
+    release(&bsem_table.lock_life);
     bsem_down_core(bsem, bsem_id);
   }
 }
@@ -196,7 +198,7 @@ bsem_up(int bsem_id)
 {
   struct bsem *bsem = get_bsem_for_op_by_id(bsem_id);
   if (bsem) {
-    release(&lock_bsem_table_life);
+    release(&bsem_table.lock_life);
     bsem_up_core(bsem, bsem_id);
   }
 }
