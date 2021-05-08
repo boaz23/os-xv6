@@ -160,6 +160,8 @@ void thread_func_exit_sleep_1_xstatus_98() {
 void thread_func_exec_sleep_1_xstatus_98() {
   sleep(1);
   exec(exec_argv[0], exec_argv);
+  printf("exec failed, exiting\n");
+  exit(-80);
 }
 
 void create_thread_exit_simple_other_thread_func() {
@@ -562,6 +564,8 @@ void max_threads_exec_simple(char *s) {
   sleep(5);
   print("exec...");
   exec(exec_simple_argv[0], exec_simple_argv);
+  printf("exec failed, exiting\n");
+  exit(-80);
 }
 
 void max_threads_exec(char *s) {
@@ -599,6 +603,8 @@ void max_threads_exec(char *s) {
   sleep(5);
   print("exec...");
   exec(exec_argv[0], exec_argv);
+  printf("exec failed, exiting\n");
+  exit(-80);
 }
 
 void max_threads_exec_they_exit_after_1(char *s) {
@@ -636,6 +642,8 @@ void max_threads_exec_they_exit_after_1(char *s) {
   sleep(5);
   print("exec...");
   exec(exec_argv[0], exec_argv);
+  printf("exec failed, exiting\n");
+  exit(-80);
 }
 
 void max_threads_exec_by_created_they_run_forever(char *s) {
