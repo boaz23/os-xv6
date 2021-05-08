@@ -33,12 +33,6 @@ bseminit(void)
   }
 }
 
-int
-alloc_bsem_id()
-{
-  return next_id++;
-}
-
 struct bsem*
 find_unused_bsem()
 {
@@ -53,6 +47,33 @@ find_unused_bsem()
   }
 
   return bsem_unused;
+}
+
+int
+alloc_bsem_id()
+{
+  return next_id++;
+}
+
+int
+bsem_init(struct bsem *bsem)
+{
+  bsem->id = alloc_bsem_id();
+  bsem->state = BSEM_LIFE_USED;
+  bsem->value = BSEM_VALUE_RELEASED;
+  return bsem->id;
+}
+
+int
+bsem_alloc()
+{
+  int id = -1;
+  struct bsem *bsem = find_unused_bsem();
+  if (bsem) {
+    id = bsem_init(bsem);
+    release(&lock_bsem_table_life);
+  }
+  return id;
 }
 
 int
@@ -89,27 +110,6 @@ get_bsem_for_op_by_id(int bsem_id)
     release(&lock_bsem_table_life);
   }
   return bsem;
-}
-
-int
-bsem_init(struct bsem *bsem)
-{
-  bsem->id = alloc_bsem_id();
-  bsem->state = BSEM_LIFE_USED;
-  bsem->value = BSEM_VALUE_RELEASED;
-  return bsem->id;
-}
-
-int
-bsem_alloc()
-{
-  int id = -1;
-  struct bsem *bsem = find_unused_bsem();
-  if (bsem) {
-    id = bsem_init(bsem);
-    release(&lock_bsem_table_life);
-  }
-  return id;
 }
 
 void
