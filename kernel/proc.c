@@ -749,7 +749,7 @@ kthread_exit(int status)
   struct proc *p = t->process;
   int should_exit = 0;
 
-  trace_thread_act("kthread_exit", "enter status %d", status);
+  trace_thread_act("kthread_exit", "enter with status %d", status);
   acquire(&p->lock);
   p->threads_alive_count--;
   if (p->threads_alive_count == 0) {
@@ -844,7 +844,7 @@ exit(int status)
   // this also returns to the scheduler.
 
   struct proc *p = myproc();
-  trace_thread_act("exit", "enter");
+  trace_thread_act("exit", "enter with status %d", status);
   if (proc_kill_if_alive(p, KILLED_DFL) < 0) {
     // the process was already killed, so we do not want to change anything else
     return;

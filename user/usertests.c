@@ -3487,13 +3487,11 @@ signal_handler_print_signum(int signum){
 
 void 
 signal_handler_set_global_var_dummy(int signum){
-  printf("In handler without sleep dummy\n");
   global_var = signum;
 }
 
 void 
 signal_handler_set_global_var(int signum){
-  printf("In handler without sleep\n");
   global_var = signum;
 }
 
@@ -3506,7 +3504,6 @@ void (*get_signal_handler_set_global_var())(int){
 
 void 
 signal_handler_sleep_and_set_global_var(int signum){
-  printf("In handler with sleep\n");
   global_var = signum;
   for(int i = 0; i < 10; i++){
     sleep(1);
@@ -3517,6 +3514,8 @@ void
 test_sigmask(char *s){
   int signum_act_with_sleep = 11;
   int signum_act_without_sleep = 10;
+  int pid_child = 0;
+  int parent_pid = getpid();
 
   struct sigaction act_with_sleep = { 
     &signal_handler_sleep_and_set_global_var, 
@@ -3528,9 +3527,6 @@ test_sigmask(char *s){
     0 
   };
 
-  int pid_child = 0;
-  int parent_pid = getpid();
-
   sigprocmask((1 << signum_act_without_sleep));
 
   if(sigaction(signum_act_with_sleep, &act_with_sleep, 0) != 0 ||
@@ -3540,13 +3536,15 @@ test_sigmask(char *s){
   }
 
   global_var = 0;
-
-  if ((pid_child = fork() < 0)) {
+  if ((pid_child = fork()) < 0) {
     printf("%s: fork failed\n", s);
     exit(-1);
   } else if(pid_child == 0){
-    kill(parent_pid, signum_act_with_sleep);
-    kill(parent_pid, signum_act_without_sleep);
+    if (kill(parent_pid, signum_act_with_sleep) < 0 ||
+        kill(parent_pid, signum_act_without_sleep) < 0) {
+      printf("%s: killed failed\n", s);
+      exit(1);
+    }
     exit(0);
   } else {
     wait(0);
@@ -3648,12 +3646,12 @@ main(int argc, char *argv[])
     {test_sigcont_then_stop, "sigcont_then_stop"},
     {test_sigprocmask_simple, "sigprocmask_simple"},
     {test_sigprocmask_special, "sigprocmask_special"},
+    {test_sigaction_invalid_signums, "test_sigaction_invalid_signums"},
+    {test_simple_signal, "test_simple_signal"},
+    {test_sigmask, "test_sigmask"},
     {test_normal_signal_dfl_is_kill, "normal_signal_dfl_is_kill"},
     {test_normal_signal_kill_handler, "normal_signal_kill_handler"},
     {test_sigaction_fork_custom_handlers, "sigaction_fork_custom_handlers"},
-    {test_sigmask, "test_sigmask"},
-    {test_sigaction_invalid_signums, "test_sigaction_invalid_signums"},
-    {test_simple_signal, "test_simple_signal"},
 	  
 // ASS 1 tests
 //	{stracetest,"stracetest"},    //18 ticks, need to compare inputs
