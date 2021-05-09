@@ -38,6 +38,11 @@ int kthread_id();
 void kthread_exit(int status);
 int kthread_join(int thread_id, int *status);
 
+int bsem_alloc();
+void bsem_free(int);
+void bsem_down(int);
+void bsem_up(int);
+
 // ulib.c
 int stat(const char*, struct stat*);
 char* strcpy(char*, const char*);
