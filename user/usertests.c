@@ -3200,6 +3200,71 @@ test_normal_signal_dfl_is_kill(char *s)
 }
 
 void
+test_normal_signal_kill_handler(char *s)
+{
+  int pid_child;
+  int status;
+  int signum = 18;
+
+  if (pipe(pipe_fds) < 0) {
+    printf("%s: pipe failed\n");
+    exit(1);
+  }
+
+  pid_child = fork();
+  if (pid_child < 0) {
+    printf("%s: fork failed\n");
+    exit(1);
+  }
+  else if (pid_child == 0) {
+    // child
+    struct sigaction act = {
+      .sa_handler = (void *)SIGKILL,
+      .sigmask = 1,
+    };
+    if (close(pipe_fds[0]) < 0) {
+      printf("%s: child pipe close failed\n");
+      exit(3);
+    }
+    if (sigaction(signum, &act, 0) < 0) {
+      printf("%s: sigaction failed\n");
+      exit(3);
+    }
+    if (write(pipe_fds[1], "x", 1) != 1) {
+      printf("%s: child pipe write failed\n");
+      exit(3);
+    }
+    sleep(15);
+    exit(5);
+  }
+  else {
+    // parent
+    char pipe_buf;
+    if (close(pipe_fds[1]) < 0) {
+      printf("%s: parent pipe close failed\n");
+      exit(3);
+    }
+    if (read(pipe_fds[0], &pipe_buf, 1) != 1) {
+      printf("%s: parent pipe read failed\n");
+      exit(3);
+    }
+    if (kill(pid_child, signum) < 0) {
+      printf("%s: kill failed\n");
+      exit(1);
+    }
+    if (wait(&status) != pid_child) {
+      printf("%s: wait failed\n");
+      exit(1);
+    }
+    if (status != -1) {
+      printf("%s: bad status, expected -1\n");
+      exit(1);
+    }
+    exit(0);
+  }
+}
+
+void
 test_sigaction_custom_handlers_func_1(int signum)
 {
   if (signum != 5) {
@@ -3440,6 +3505,7 @@ main(int argc, char *argv[])
 	  {bsem_test,"bsem_test"},
 	  {Csem_test,"Csem_test"},
 
+    // our tests for signals
     {test_sigkill, "sigkill"},
     {test_sigstop_sigkill, "sigstop_kill"},
     {test_sigstop_then_sigcont, "sigstop_then_cont"},
@@ -3448,6 +3514,7 @@ main(int argc, char *argv[])
     {test_sigprocmask_simple, "sigprocmask_simple"},
     {test_sigprocmask_special, "sigprocmask_special"},
     {test_normal_signal_dfl_is_kill, "normal_signal_dfl_is_kill"},
+    {test_normal_signal_kill_handler, "normal_signal_kill_handler"},
     {test_sigaction_fork_custom_handlers, "sigaction_fork_custom_handlers"},
 	  
 // ASS 1 tests
