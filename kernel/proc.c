@@ -363,7 +363,7 @@ found:
   p->pending_signals = 0;
   p->signal_mask = 0;
   for(int i = 0; i < MAX_SIG; i++){
-    p->signal_handlers[i] = SIG_DFL; 
+    p->signal_handlers[i] = (void *)SIG_DFL; 
     p->signal_handles_mask[i] = 0;
   }
 
@@ -1445,7 +1445,7 @@ is_overridable_signum(int signum)
 
 void check_signal_not_overriden(struct proc *p, int signum, char *sig_name)
 {
-  if (p->signal_handlers[signum] != SIG_DFL ||
+  if (p->signal_handlers[signum] != (void *)SIG_DFL ||
       p->signal_mask & (1 << signum) ||
       p->signal_handles_mask[signum]) {
     printf("%s ", sig_name);

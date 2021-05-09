@@ -3347,6 +3347,141 @@ test_sigaction_fork_custom_handlers(char *s)
   }
 }
 
+int global_var = 0;
+
+void 
+signal_handler_print_signum(int signum){
+  printf("Got signal %d\n", signum);
+}
+
+void 
+signal_handler_set_global_var_dummy(int signum){
+  printf("In handler without sleep dummy\n");
+  global_var = signum;
+}
+
+void 
+signal_handler_set_global_var(int signum){
+  printf("In handler without sleep\n");
+  global_var = signum;
+}
+
+void (*get_signal_handler_set_global_var())(int){
+  if(&signal_handler_set_global_var_dummy > &signal_handler_set_global_var){
+    return signal_handler_set_global_var_dummy;
+  }
+  return signal_handler_set_global_var;
+}
+
+void 
+signal_handler_sleep_and_set_global_var(int signum){
+  printf("In handler with sleep\n");
+  global_var = signum;
+  for(int i = 0; i < 10; i++){
+    sleep(1);
+  }
+}
+
+void
+test_sigmask(char *s){
+  int signum_act_with_sleep = 11;
+  int signum_act_without_sleep = 10;
+
+  struct sigaction act_with_sleep = { 
+    &signal_handler_sleep_and_set_global_var, 
+    (1 << signum_act_without_sleep)
+  };
+
+  struct sigaction act_without_sleep = { 
+    get_signal_handler_set_global_var(), 
+    0 
+  };
+
+  int pid_child = 0;
+  int parent_pid = getpid();
+
+  sigprocmask((1 << signum_act_without_sleep));
+
+  if(sigaction(signum_act_with_sleep, &act_with_sleep, 0) != 0 ||
+    sigaction(signum_act_without_sleep, &act_without_sleep, 0) != 0){
+    printf("%s: sigaction error\n", s);
+    exit(-1);
+  }
+
+  global_var = 0;
+
+  if ((pid_child = fork() < 0)) {
+    printf("%s: fork failed\n", s);
+    exit(-1);
+  } else if(pid_child == 0){
+    kill(parent_pid, signum_act_with_sleep);
+    kill(parent_pid, signum_act_without_sleep);
+    exit(0);
+  } else {
+    wait(0);
+
+    if(global_var != signum_act_with_sleep){
+      printf("%s: except global var %d recive %d\n", 
+        s, signum_act_with_sleep, global_var);
+      exit(-1);
+    }
+
+    sigprocmask(0);
+    sleep(2);
+
+    if(global_var != signum_act_without_sleep){
+      printf("%s: except global var %d recive %d\n", 
+        s, signum_act_without_sleep, global_var);
+      exit(-1);
+    }
+  }
+
+  exit(0);
+}
+
+void 
+test_sigaction_invalid_signums(char *s){
+  struct sigaction new_act = { &signal_handler_print_signum, 0 };
+
+  if(sigaction(-1, &new_act, 0) == 0 || 
+    sigaction(32, &new_act, 0) == 0){
+      printf("%s: sigaction recive invalid signum\n", s);
+      exit(-1);
+  }
+
+  exit(0);
+}
+
+void 
+test_simple_signal(char *s){
+  int signum = 10;
+  struct sigaction new_act = { get_signal_handler_set_global_var(), 0 };
+
+  if(sigaction(signum, &new_act, 0) != 0){
+    printf("%s: sigaction\n", s);
+    exit(-1);
+  }
+
+  global_var = 0;
+  
+  if(kill(getpid(), signum)){
+    printf("%s: error in sending signal\n", s);
+    exit(-1);
+  }
+
+  while(global_var == 0){
+    sleep(1);
+  }
+
+  if(global_var != signum){
+      printf("%s: except global var %d recive %d\n", 
+        s, signum, global_var);
+      exit(-1);
+  }
+
+  exit(0);
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -3382,6 +3517,9 @@ main(int argc, char *argv[])
     {test_sigprocmask_simple, "sigprocmask_simple"},
     {test_sigprocmask_special, "sigprocmask_special"},
     {test_sigaction_fork_custom_handlers, "sigaction_fork_custom_handlers"},
+    {test_sigmask, "test_sigmask"},
+    {test_sigaction_invalid_signums, "test_sigaction_invalid_signums"},
+    {test_simple_signal, "test_simple_signal"},
 	  
 // ASS 1 tests
 //	{stracetest,"stracetest"},    //18 ticks, need to compare inputs
