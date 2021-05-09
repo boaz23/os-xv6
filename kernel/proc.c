@@ -755,7 +755,7 @@ kthread_exit(int status)
   if (p->threads_alive_count == 0) {
     should_exit = 1;
     if (proc_kill_if_alive_no_locks(p, KILLED_DFL) == 0) {
-      p->xstate = KILLED_XSTATUS;
+      p->xstate = status;
     }
     else {
       // process was already killed by another thread.

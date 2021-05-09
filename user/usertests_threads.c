@@ -215,7 +215,7 @@ void kthread_create_simple(char *s) {
     error_exit_core("pipe read - main thread failed", -10);
   }
   
-  kthread_exit(0);
+  kthread_exit(1);
 }
 
 void join_simple(char *s) {
@@ -514,14 +514,14 @@ void exec_test_simple_func() {
   print("print after successful exec");
   test_name = "exec simple thread create";
   create_thread_exit_simple(test_name);
-  exit(6);
+  exit(96);
 }
 
 void exec_test_func() {
   print("print after successful exec");
   test_name = "exec max threads join";
   max_threads_join(test_name);
-  exit(6);
+  exit(96);
 }
 
 void max_threads_exec_simple(char *s) {
@@ -777,25 +777,25 @@ struct test tests[] = {
   {
     .f = create_thread_exit_simple,
     .name = "create_thread_exit_simple",
-    .expected_exit_status = -1,
+    .expected_exit_status = 6,
     .repeat_count = 1,
   },
   {
     .f = kthread_create_simple,
     .name = "kthread_create_simple",
-    .expected_exit_status = -1,
+    .expected_exit_status = 1,
     .repeat_count = 1,
   },
   {
     .f = join_simple,
     .name = "join_simple",
-    .expected_exit_status = -1,
+    .expected_exit_status = -3,
     .repeat_count = 1,
   },
   {
     .f = join_self,
     .name = "join_self",
-    .expected_exit_status = -1,
+    .expected_exit_status = -7,
     .repeat_count = 1,
   },
   {
@@ -843,7 +843,7 @@ struct test tests[] = {
   {
     .f = max_threads_exec_simple,
     .name = "max_threads_exec_simple",
-    .expected_exit_status = -1,
+    .expected_exit_status = 6,
     .repeat_count = 1
   },
   {
