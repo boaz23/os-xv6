@@ -3824,6 +3824,129 @@ test_simple_signal(char *s){
   exit(0);
 }
 
+// The scenario and why it works:
+// 1. The parent stops the child and writes to pipe.
+// 2. The parent then attempt to read the pipe expecting that the child hasn't read it at all.              
+//    If stopping the child failed, then the child will read the pipe. Thus, the parent can get stuck here.
+//    If stopping the child succeeded, the test goes on and the parent writes back to pipe so that the child
+//    will not get stuck once it is continued.
+// 3. The parent then continues the child and waiting for his mark that he indeed continued.
+//    This another part where the parent can get stuck: if the the child hasn't continued.
+// NOTE: this test cannot fail, only get stuck.
+void
+test_normal_signal_stop_cont(char *s) {
+  int pid_child;
+  int pipe_fds2[2];
+  char buf[100];
+  char buf2[100];
+  int sigcont = 4;
+  int sigstop = 5;
+  
+  for (int i = 0; i < 100; i++) {
+    buf[i] = '1';
+  }
+
+  if (pipe(pipe_fds) < 0) {
+    printf("%s: pipe failed\n", s);
+    exit(1);
+  }
+  if (pipe(pipe_fds2) < 0) {
+    printf("%s: pipe 2 failed\n", s);
+    exit(1);
+  }
+
+  pid_child = fork();
+  if (pid_child < 0) {
+    printf("%s: fork failed\n", s);
+    exit(1);
+  }
+  else if (pid_child == 0) {
+    // child
+    struct sigaction act_cont;
+    struct sigaction act_stop;
+    if (close(pipe_fds2[0]) < 0) {
+      printf("%s: child pipe close failed\n");
+      exit(1);
+    }
+
+    act_cont.sa_handler = (void *)SIGCONT;
+    act_cont.sigmask = 0;
+    if (sigaction(sigcont, &act_cont, 0) < 0) {
+      printf("%s: sigaction 1 failed\n");
+      exit(1);
+    }
+    act_stop.sa_handler = (void *)SIGSTOP;
+    act_stop.sigmask = 0;
+    if (sigaction(sigstop, &act_stop, 0) < 0) {
+      printf("%s: sigaction 2 failed\n");
+      exit(1);
+    }
+    sleep(4);
+
+    if (read(pipe_fds[0], buf2, 100) != 100) {
+      printf("%s: child pipe read failed\n", s);
+      exit(1);
+    }
+    if (write(pipe_fds2[1], "x", 1) != 1) {
+      printf("%s: child pipe write failed\n", s);
+      exit(1);
+    }
+    
+    exit(0);
+  }
+  else {
+    // parent
+    int status;
+
+    if (close(pipe_fds2[1]) < 0) {
+      printf("%s: parent pipe close failed\n");
+      exit(1);
+    }
+    sleep(2);
+    
+    if (kill(pid_child, sigstop) < 0) {
+      printf("%s: kill failed\n", s);
+      exit(1);
+    }
+    if (write(pipe_fds[1], buf, 100) != 100) {
+      printf("%s: parent pipe write failed\n", s);
+      exit(1);
+    }
+    sleep(6);
+    
+    // this is the part where the parent can get stuck if the child read the pipe
+    if (read(pipe_fds[0], buf2, 100) != 100) {
+      printf("%s: parent pipe read failed\n", s);
+      exit(1);
+    }
+    
+    // write it again because the parent just consumed all of it
+    // and we don't want the child to get stuck in read.
+    if (write(pipe_fds[1], buf, 100) != 100) {
+      printf("%s: parent pipe write 2 failed\n", s);
+      exit(1);
+    }
+    
+    if (kill(pid_child, sigcont) < 0) {
+      printf("%s: kill 2 failed\n", s);
+      exit(1);
+    }
+    if (read(pipe_fds2[0], buf2, 1) != 1) {
+      printf("%s: parent pipe read 2 failed\n", s);
+      exit(1);
+    }
+    if (wait(&status) != pid_child) {
+      printf("%s: parent wait failed\n", s);
+      exit(1);
+    }
+    if (status != 0) {
+      printf("%s: expected status 0, got %d\n", s, status);
+      exit(1);
+    }
+    exit(0);
+  }
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -3867,6 +3990,7 @@ main(int argc, char *argv[])
     {test_sigmask_normal_signal_ign_handler, "sigmask_normal_signal_ign_handler"},
     {test_normal_signal_dfl_is_kill, "normal_signal_dfl_is_kill"},
     {test_normal_signal_kill_handler, "normal_signal_kill_handler"},
+    {test_normal_signal_stop_cont, "normal_signal_stop_cont_handlers"},
     {test_sigaction_fork_custom_handlers, "sigaction_fork_custom_handlers"},
 	  
 // ASS 1 tests
