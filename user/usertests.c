@@ -3569,6 +3569,156 @@ test_sigmask(char *s){
 }
 
 void
+test_sigmask_normal_signal_kill_handler_child(char *s){
+  int signum_act_with_sleep = 11;
+  int signum_act_without_sleep = 10;
+  int pid_child = 0;
+  int parent_pid = getpid();
+
+  struct sigaction act_with_sleep = { 
+    &signal_handler_sleep_and_set_global_var, 
+    (1 << signum_act_without_sleep)
+  };
+
+  struct sigaction act_without_sleep = { 
+    (void *)SIGKILL, 
+    0
+  };
+
+  sigprocmask((1 << signum_act_without_sleep));
+
+  if(sigaction(signum_act_with_sleep, &act_with_sleep, 0) != 0 ||
+    sigaction(signum_act_without_sleep, &act_without_sleep, 0) != 0){
+    printf("%s: sigaction error\n", s);
+    exit(-1);
+  }
+
+  global_var = 0;
+  if ((pid_child = fork()) < 0) {
+    printf("%s: fork failed\n", s);
+    exit(-1);
+  } else if(pid_child == 0){
+    if (kill(parent_pid, signum_act_with_sleep) < 0 ||
+        kill(parent_pid, signum_act_without_sleep) < 0) {
+      printf("%s: killed failed\n", s);
+      exit(1);
+    }
+    exit(0);
+  } else {
+    wait(0);
+
+    if(global_var != signum_act_with_sleep){
+      printf("%s: except global var %d recive %d\n", 
+        s, signum_act_with_sleep, global_var);
+      exit(-1);
+    }
+
+    sigprocmask(0);
+    sleep(2);
+  }
+
+  exit(0);
+}
+void
+test_sigmask_normal_signal_kill_handler(char *s) {
+  int status;
+  int pid_child = fork();
+  if (pid_child < 0) {
+    printf("%s: fork failed\n", s);
+    exit(-1);
+  }
+  else if (pid_child == 0) {
+    test_sigmask_normal_signal_kill_handler_child(s);
+  }
+  else {
+    if (wait(&status) != pid_child) {
+      printf("%s: bad child returned from wait\n", s);
+      exit(-1);
+    }
+    if (status != -1) {
+      printf("%s: expected first child to get killed, got status %d, expected -1\n", s, status);
+      exit(-1);
+    }
+    exit(0);
+  }
+}
+
+void
+test_sigmask_normal_signal_ign_handler_child(char *s){
+  int signum_act_with_sleep = 11;
+  int signum_act_without_sleep = 10;
+  int pid_child = 0;
+  int parent_pid = getpid();
+
+  struct sigaction act_with_sleep = { 
+    &signal_handler_sleep_and_set_global_var, 
+    (1 << signum_act_without_sleep)
+  };
+
+  struct sigaction act_without_sleep = { 
+    (void *)SIG_IGN, 
+    0
+  };
+
+  sigprocmask((1 << signum_act_without_sleep));
+
+  if(sigaction(signum_act_with_sleep, &act_with_sleep, 0) != 0 ||
+    sigaction(signum_act_without_sleep, &act_without_sleep, 0) != 0){
+    printf("%s: sigaction error\n", s);
+    exit(-1);
+  }
+
+  global_var = 0;
+  if ((pid_child = fork()) < 0) {
+    printf("%s: fork failed\n", s);
+    exit(-1);
+  } else if(pid_child == 0){
+    if (kill(parent_pid, signum_act_with_sleep) < 0 ||
+        kill(parent_pid, signum_act_without_sleep) < 0) {
+      printf("%s: killed failed\n", s);
+      exit(1);
+    }
+    exit(0);
+  } else {
+    wait(0);
+
+    if(global_var != signum_act_with_sleep){
+      printf("%s: except global var %d recive %d\n", 
+        s, signum_act_with_sleep, global_var);
+      exit(-1);
+    }
+
+    sigprocmask(0);
+    sleep(2);
+  }
+
+  exit(7);
+}
+void
+test_sigmask_normal_signal_ign_handler(char *s) {
+  int status;
+  int pid_child = fork();
+  if (pid_child < 0) {
+    printf("%s: fork failed\n", s);
+    exit(-1);
+  }
+  else if (pid_child == 0) {
+    test_sigmask_normal_signal_ign_handler_child(s);
+  }
+  else {
+    if (wait(&status) != pid_child) {
+      printf("%s: bad child returned from wait\n", s);
+      exit(-1);
+    }
+    if (status != 7) {
+      printf("%s: expected first child to get killed, got status %d, expected 7\n", s, status);
+      exit(-1);
+    }
+    exit(0);
+  }
+}
+
+void
 test_sigign(char *s){
   int signum_act_with_sleep = 11;
   int signum_act_without_sleep = 10;
@@ -3713,6 +3863,8 @@ main(int argc, char *argv[])
     {test_simple_signal, "simple_signal"},
     {test_sigmask, "sigmask"},
     {test_sigign, "signign"},
+    {test_sigmask_normal_signal_kill_handler, "sigmask_normal_signal_kill_handler"},
+    {test_sigmask_normal_signal_ign_handler, "sigmask_normal_signal_ign_handler"},
     {test_normal_signal_dfl_is_kill, "normal_signal_dfl_is_kill"},
     {test_normal_signal_kill_handler, "normal_signal_kill_handler"},
     {test_sigaction_fork_custom_handlers, "sigaction_fork_custom_handlers"},
