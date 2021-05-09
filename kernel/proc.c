@@ -1562,7 +1562,15 @@ proc_handle_special_signals(struct thread *t)
         }
         else {
           // custom user handler
-          // do not unset the signal
+
+          // if ignored, remove it from pening
+          if(handler == (void *)SIG_IGN){
+            p->pending_signals &= ~(1 << signum);
+            continue;
+          }
+
+          // not ignored, do not unset the signal so the other
+          // handler function will notice this signal.
           continue;
         }
         p->pending_signals &= ~(1 << signum);
@@ -1637,11 +1645,18 @@ proc_find_custom_signal_handler(struct proc *p, struct sigaction *user_action, i
     }
 
     handler = p->signal_handlers[signum];
-    // guard against magically unhandled signals
+    // guard against signals which went unhandled in the special signals due to blocking
+    // or handling of another signal of the same kind.
     if (
       handler == (void *)SIG_DFL || handler == (void *)SIGCONT ||
       handler == (void *)SIGKILL || handler == (void *)SIGSTOP
     ) {
+      continue;
+    }
+
+    // ignored?
+    if(handler == (void *)SIG_IGN){
+      p->pending_signals &= ~(1 << signum);
       continue;
     }
     
