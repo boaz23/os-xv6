@@ -3568,6 +3568,69 @@ test_sigmask(char *s){
   exit(0);
 }
 
+void
+test_sigign(char *s){
+  int signum_act_with_sleep = 11;
+  int signum_act_without_sleep = 10;
+  int pid_child = 0;
+  int parent_pid = getpid();
+
+  struct sigaction act_with_sleep = { 
+    &signal_handler_sleep_and_set_global_var, 
+    0
+  };
+
+  struct sigaction act_ign = {
+    .sa_handler = (void *)SIG_IGN,
+    .sigmask = 0
+  };
+
+  struct sigaction act_without_sleep = { 
+    get_signal_handler_set_global_var(), 
+    0 
+  };
+
+  if(sigaction(signum_act_with_sleep, &act_with_sleep, 0) != 0 ||
+    sigaction(signum_act_without_sleep, &act_ign, 0) != 0){
+    printf("%s: sigaction error\n", s);
+    exit(-1);
+  }
+
+  global_var = 0;
+  if ((pid_child = fork()) < 0) {
+    printf("%s: fork failed\n", s);
+    exit(-1);
+  } else if(pid_child == 0){
+    if (kill(parent_pid, signum_act_with_sleep) < 0 ||
+        kill(parent_pid, signum_act_without_sleep) < 0) {
+      printf("%s: killed failed\n", s);
+      exit(1);
+    }
+    exit(0);
+  } else {
+    wait(0);
+
+    if(global_var != signum_act_with_sleep){
+      printf("%s: except global var %d recive %d\n", 
+        s, signum_act_with_sleep, global_var);
+      exit(-1);
+    }
+    if(sigaction(signum_act_without_sleep, &act_without_sleep, 0) != 0){
+      printf("%s: sigaction error\n", s);
+      exit(-1);
+    }
+    sleep(2);
+
+    if(global_var != signum_act_with_sleep){
+      printf("%s: except global var %d recive %d\n", 
+        s, signum_act_with_sleep, global_var);
+      exit(-1);
+    }
+  }
+
+  exit(0);
+}
+
 void 
 test_sigaction_invalid_signums(char *s){
   struct sigaction new_act = { &signal_handler_print_signum, 0 };
@@ -3646,9 +3709,10 @@ main(int argc, char *argv[])
     {test_sigcont_then_stop, "sigcont_then_stop"},
     {test_sigprocmask_simple, "sigprocmask_simple"},
     {test_sigprocmask_special, "sigprocmask_special"},
-    {test_sigaction_invalid_signums, "test_sigaction_invalid_signums"},
-    {test_simple_signal, "test_simple_signal"},
-    {test_sigmask, "test_sigmask"},
+    {test_sigaction_invalid_signums, "sigaction_invalid_signums"},
+    {test_simple_signal, "simple_signal"},
+    {test_sigmask, "sigmask"},
+    {test_sigign, "signign"},
     {test_normal_signal_dfl_is_kill, "normal_signal_dfl_is_kill"},
     {test_normal_signal_kill_handler, "normal_signal_kill_handler"},
     {test_sigaction_fork_custom_handlers, "sigaction_fork_custom_handlers"},
