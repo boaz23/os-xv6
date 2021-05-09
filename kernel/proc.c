@@ -435,6 +435,11 @@ freeproc(struct proc *p)
   p->freezed = 0;
   p->next_tid = 1;
   p->threads_alive_count = 0;
+  p->in_custom_handler = 0;
+  p->special_signum_handling = -1;
+  p->signal_mask_backup = 0;
+  p->signal_mask = 0;
+  p->pending_signals = 0;
   p->state = P_UNUSED;
 }
 
@@ -1571,7 +1576,7 @@ proc_handle_special_signals(struct thread *t)
 
       // if p->killed is set, then some other thread set it,
       // therefore we should not mess with it, just quit.
-      if (killed) {
+      if (killed && (!p->killed || p->killed == KILLED_SPECIAL)) {
         exit_special_no_lock(p, KILLED_XSTATUS);
       }
 
