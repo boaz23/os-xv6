@@ -3790,6 +3790,11 @@ test_sigaction_invalid_signums(char *s){
       printf("%s: sigaction recive invalid signum\n", s);
       exit(-1);
   }
+  if(sigaction(SIGKILL, &new_act, 0) == 0 || 
+    sigaction(SIGSTOP, &new_act, 0) == 0){
+      printf("%s: sigaction accepted SIGKILL or SIGSTOP\n", s);
+      exit(-1);
+  }
 
   exit(0);
 }
@@ -3947,16 +3952,122 @@ test_normal_signal_stop_cont(char *s) {
   }
 }
 
+
+char *exec_argv_1[] = {
+  "<placeholder>",
+  "--singals-exec-test-1",
+  0
+};
+char *exec_argv_2[] = {
+  "<placeholder>",
+  "--singals-exec-test-2",
+  0
+};
+
+void
+signals_exec_func_1(void)
+{
+  if (kill(getpid(), 4) < 0) {
+    printf("child 1 kill faild\n");
+    exit(-2);
+  }
+  exit(6);
+}
+
+void
+signals_exec_func_2(void)
+{
+  kill(getpid(), 4);
+  exit(3);
+}
+
+void exit_2(int signum) {
+  exit(2);
+}
+
+void
+test_signals_exec(char *s)
+{
+  int pid_child;
+  int status;
+
+  pid_child = fork();
+  if (pid_child < 0) {
+    printf("%s: fork failed\n");
+    exit(1);
+  }
+  
+  if (pid_child == 0) {
+    struct sigaction act;
+
+    act.sa_handler = (void *)SIG_IGN;
+    act.sigmask = 1;
+    if (sigaction(4, &act, 0) < 0) {
+      printf("%s: child 1 sigaction failed\n", s);
+      exit(-2);
+    }
+
+    exec(exec_argv_1[0], exec_argv_1);
+    printf("%s: exec 1 failed\n", s);
+    exit(-2);
+  }
+
+  if (wait(&status) != pid_child) {
+    printf("%s: wait returned bad pid\n", s);
+    exit(1);
+  }
+  if (status != 6) {
+    printf("%s: execpted child 1 to exit gracefully\n", s);
+    exit(1);
+  }
+
+  pid_child = fork();
+  if (pid_child < 0) {
+    printf("%s: fork failed\n");
+    exit(1);
+  }
+  
+  if (pid_child == 0) {
+    struct sigaction act;
+
+    act.sa_handler = exit_2;
+    act.sigmask = 1;
+    if (sigaction(4, &act, 0) < 0) {
+      printf("%s: child 2 sigaction failed\n", s);
+      exit(-2);
+    }
+
+    exec(exec_argv_2[0], exec_argv_2);
+    printf("%s: exec 2 failed\n", s);
+    exit(-2);
+  }
+
+  if (wait(&status) != pid_child) {
+    printf("%s: wait returned bad pid\n", s);
+    exit(1);
+  }
+  if (status != -1) {
+    printf("%s: execpted child 2 die due to default handling of a normal signal\n", s);
+    exit(1);
+  }
+}
+
 int
 main(int argc, char *argv[])
 {
   int continuous = 0;
   char *justone = 0;
-
+  
+  exec_argv_1[0] = argv[0];
+  exec_argv_2[0] = argv[0];
   if(argc == 2 && strcmp(argv[1], "-c") == 0){
     continuous = 1;
   } else if(argc == 2 && strcmp(argv[1], "-C") == 0){
     continuous = 2;
+  } else if (argc == 2 && strcmp(argv[1], "--singals-exec-test-1") == 0) {
+    signals_exec_func_1();
+  } else if (argc == 2 && strcmp(argv[1], "--singals-exec-test-2") == 0) {
+    signals_exec_func_2();
   } else if(argc == 2 && argv[1][0] != '-'){
     justone = argv[1];
   } else if(argc > 1){
@@ -3991,6 +4102,7 @@ main(int argc, char *argv[])
     {test_normal_signal_dfl_is_kill, "normal_signal_dfl_is_kill"},
     {test_normal_signal_kill_handler, "normal_signal_kill_handler"},
     {test_normal_signal_stop_cont, "normal_signal_stop_cont_handlers"},
+    {test_signals_exec, "signals_exec"},
     {test_sigaction_fork_custom_handlers, "sigaction_fork_custom_handlers"},
 	  
 // ASS 1 tests
