@@ -27,6 +27,7 @@
 #define BUFSZ  ((MAXOPBLOCKS+2)*BSIZE)
 
 char buf[BUFSZ];
+int pipe_fds[2];
 
 
 int wait_sig = 0;
@@ -3164,12 +3165,114 @@ test_sigprocmask_special(char *s)
   exit(0);
 }
 
-int pipe_fds[2];
+void
+test_normal_signal_dfl_is_kill(char *s)
+{
+  int pid_child;
+  int status;
+
+  pid_child = fork();
+  if (pid_child < 0) {
+    printf("%s: fork failed\n");
+    exit(1);
+  }
+  else if (pid_child == 0) {
+    // child
+    sleep(15);
+    exit(5);
+  }
+  else {
+    // parent
+    if (kill(pid_child, 18) < 0) {
+      printf("%s: kill failed\n");
+      exit(1);
+    }
+    if (wait(&status) != pid_child) {
+      printf("%s: wait failed\n");
+      exit(1);
+    }
+    if (status != -1) {
+      printf("%s: bad status, expected -1\n");
+      exit(1);
+    }
+    exit(0);
+  }
+}
+
+void
+test_normal_signal_kill_handler(char *s)
+{
+  int pid_child;
+  int status;
+  int signum = 18;
+
+  if (pipe(pipe_fds) < 0) {
+    printf("%s: pipe failed\n");
+    exit(1);
+  }
+
+  pid_child = fork();
+  if (pid_child < 0) {
+    printf("%s: fork failed\n");
+    exit(1);
+  }
+  else if (pid_child == 0) {
+    // child
+    struct sigaction act = {
+      .sa_handler = (void *)SIGKILL,
+      .sigmask = 1,
+    };
+    if (close(pipe_fds[0]) < 0) {
+      printf("%s: child pipe close failed\n");
+      exit(3);
+    }
+    if (sigaction(signum, &act, 0) < 0) {
+      printf("%s: sigaction failed\n");
+      exit(3);
+    }
+    if (write(pipe_fds[1], "x", 1) != 1) {
+      printf("%s: child pipe write failed\n");
+      exit(3);
+    }
+    sleep(15);
+    exit(5);
+  }
+  else {
+    // parent
+    char pipe_buf;
+    if (close(pipe_fds[1]) < 0) {
+      printf("%s: parent pipe close failed\n");
+      exit(3);
+    }
+    if (read(pipe_fds[0], &pipe_buf, 1) != 1) {
+      printf("%s: parent pipe read failed\n");
+      exit(3);
+    }
+    if (kill(pid_child, signum) < 0) {
+      printf("%s: kill failed\n");
+      exit(1);
+    }
+    if (wait(&status) != pid_child) {
+      printf("%s: wait failed\n");
+      exit(1);
+    }
+    if (status != -1) {
+      printf("%s: bad status, expected -1\n");
+      exit(1);
+    }
+    exit(0);
+  }
+}
+
 void
 test_sigaction_custom_handlers_func_1(int signum)
 {
   if (signum != 5) {
     printf("handler 1 - bad signum\n");
+    exit(2);
+  }
+  if (sigprocmask(0) != ((1 << 28) | (1 << 20))) {
+    printf("handler 1 - bad sigmask returned\n");
     exit(2);
   }
   if (write(pipe_fds[1], "x", 1) != 1) {
@@ -3182,6 +3285,10 @@ test_sigaction_custom_handlers_func_2(int signum)
 {
   if (signum != 5) {
     printf("handler 2 - bad signum\n");
+    exit(2);
+  }
+  if (sigprocmask(0) != ((1 << 21) | (1 << 4))) {
+    printf("handler 2 - bad sigmask returned\n");
     exit(2);
   }
   if (write(pipe_fds[1], "1", 1) != 1) {
@@ -3203,18 +3310,30 @@ test_sigaction_fork_custom_handlers(char *s)
   int child_pid;
   char pipe_buf;
   int signum = 5;
+  int sigmask = (1 << 2);
   int sigmask_1 = (1 << 28) | (1 << 20);
   int sigmask_2 = (1 << 21) | (1 << 4);
+
   if (pipe(pipe_fds) < 0) {
     printf("%s: pipe failed\n", s);
     exit(1);
   }
+  sigprocmask(sigmask);
   act.sa_handler = test_sigaction_custom_handlers_func_1;
   act.sigmask = sigmask_1;
   if (sigaction(signum, &act, &old_act) != 0) {
     printf("%s: first sigaction failed\n", s);
     exit(1);
   }
+  if (old_act.sa_handler != SIG_DFL) {
+    printf("%s: initial handler is not default\n", s);
+    exit(1);
+  }
+  if (old_act.sigmask != 0) {
+    printf("%s: initial handler is not 0\n", s);
+    exit(1);
+  }
+
   child_pid = fork();
   if (child_pid < 0) {
     printf("%s: fork failed\n", s);
@@ -3227,6 +3346,12 @@ test_sigaction_fork_custom_handlers(char *s)
       exit(1);
     }
     sleep(10);
+
+    if (sigprocmask(1) != sigmask) {
+      printf("%s: sigmask overriden by signal\n");
+      exit(1);
+    }
+    sigprocmask(sigmask);
 
     act.sa_handler = test_sigaction_custom_handlers_func_2;
     act.sigmask = sigmask_2;
@@ -3248,6 +3373,12 @@ test_sigaction_fork_custom_handlers(char *s)
       exit(1);
     }
     sleep(10);
+
+    if (sigprocmask(1) != sigmask) {
+      printf("%s: sigmask overriden by signal 2\n");
+      exit(1);
+    }
+    sigprocmask(sigmask);
 
     act = old_act;
     if (sigaction(signum, &act, &old_act) < 0) {
@@ -3504,11 +3635,12 @@ main(int argc, char *argv[])
     char *s;
   } tests[] = {
 	  //ASS 2 Compilation tests:
-	  // {signal_test,"signal_test"},
-	  // {thread_test,"thread_test"},
-	  // {bsem_test,"bsem_test"},
-	  // {Csem_test,"Csem_test"},
+	  {signal_test,"signal_test"},
+	  {thread_test,"thread_test"},
+	  {bsem_test,"bsem_test"},
+	  {Csem_test,"Csem_test"},
 
+    // our tests for signals
     {test_sigkill, "sigkill"},
     {test_sigstop_sigkill, "sigstop_kill"},
     {test_sigstop_then_sigcont, "sigstop_then_cont"},
@@ -3516,6 +3648,8 @@ main(int argc, char *argv[])
     {test_sigcont_then_stop, "sigcont_then_stop"},
     {test_sigprocmask_simple, "sigprocmask_simple"},
     {test_sigprocmask_special, "sigprocmask_special"},
+    {test_normal_signal_dfl_is_kill, "normal_signal_dfl_is_kill"},
+    {test_normal_signal_kill_handler, "normal_signal_kill_handler"},
     {test_sigaction_fork_custom_handlers, "sigaction_fork_custom_handlers"},
     {test_sigmask, "test_sigmask"},
     {test_sigaction_invalid_signums, "test_sigaction_invalid_signums"},
