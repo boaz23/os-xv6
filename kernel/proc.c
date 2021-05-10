@@ -271,9 +271,7 @@ proc_find_unused_thread(struct proc *p)
   for(t = p->threads; t < ARR_END(p->threads); t++) {
     if (t != t_current) {
       acquire(&t->lock);
-      // the killed check is for the case where a thread is trying to
-      // collapse the rest of the threads like in exit or exec.
-      if(t->state == T_UNUSED && !t->killed) {
+      if(t->state == T_UNUSED) {
         return t;
       }
       else {
@@ -683,6 +681,9 @@ reparent(struct proc *p)
 void
 thread_kill_core(struct thread *t)
 {
+  if (t->state == T_UNUSED) {
+    return;
+  }
   if (t->state == T_SLEEPING) {
     t->state = T_RUNNABLE;
   }
