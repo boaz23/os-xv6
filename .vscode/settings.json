@@ -23,5 +23,27 @@
         "typeinfo": "c",
         "date.h": "c",
         "defs.h": "c"
-    }
+    },
+    "files.exclude": {
+        "**/": false,
+        "**/*.*": false,
+        "**/*~": true,
+        "**/_*": true,
+        "**/*.o": true,
+        "**/*.d": true,
+        "**/*.asm": true,
+        "**/*.sym": true,
+        "**/*.img": true,
+        "**/*.out": true,
+        "**/vectors.S": true,
+        "**/bootblock": true,
+        "**/entryother": true,
+        "**/initcode": true,
+        "**/kernelmemfs": true,
+        "mkfs/mkfs": true,
+        "kernel/kernel": true,
+        "kernel/kernel.ld": true,
+        "user/usys.S": true,
+        "**/.gdbinit": true
+    },
 }
