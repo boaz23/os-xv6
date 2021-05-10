@@ -524,6 +524,28 @@ void exec_test_func() {
   exit(96);
 }
 
+void exec_basic(char *s) {
+  print("exec...");
+  exec(exec_simple_argv[0], exec_simple_argv);
+  printf("exec failed, exiting\n");
+  exit(-80);
+}
+
+void exec_simple(char *s) {
+  void *stack = malloc(STACK_SIZE);
+  print("creating thread");
+  if (kthread_create(create_thread_exit_simple_other_thread_func, stack) < 0) {
+    error_exit_core("failed to create a thread", -2);
+  }
+
+  print("hello from main thread");
+
+  print("exec...");
+  exec(exec_simple_argv[0], exec_simple_argv);
+  printf("exec failed, exiting\n");
+  exit(-80);
+}
+
 void max_threads_exec_simple(char *s) {
   void *stacks[NTHREAD - 1];
   int tids[NTHREAD - 1];
@@ -797,6 +819,18 @@ struct test tests[] = {
     .name = "join_self",
     .expected_exit_status = -7,
     .repeat_count = 1,
+  },
+  {
+    .f = exec_basic,
+    .name = "exec_basic",
+    .expected_exit_status = 6,
+    .repeat_count = 1
+  },
+  {
+    .f = exec_simple,
+    .name = "exec_simple",
+    .expected_exit_status = 6,
+    .repeat_count = 1
   },
   {
     .f = exit_multiple_threads,
