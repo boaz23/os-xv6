@@ -1,3 +1,5 @@
+#ifndef __TYPES_H__
+#define __TYPES_H__
 typedef unsigned int   uint;
 typedef unsigned short ushort;
 typedef unsigned char  uchar;
@@ -13,4 +15,4 @@ struct sigaction {
     void (*sa_handler) (int);
     uint sigmask;
 };
-
+#endif

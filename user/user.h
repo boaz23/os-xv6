@@ -1,5 +1,6 @@
 #include "kernel/signal.h"
 #include "kernel/param.h"
+#include "kernel/types.h"
 
 struct stat;
 struct rtcdate;

@@ -16,6 +16,7 @@ int csem_alloc(struct counting_semaphore *sem, int initial_value) {
   }
   bsem_sleeper_id = bsem_alloc();
   if (bsem_sleeper_id < 0) {
+    bsem_free(bsem_mutex_id);
     return -1;
   }
   if (initial_value == 0) {

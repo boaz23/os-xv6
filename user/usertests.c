@@ -8,10 +8,7 @@
 #include "kernel/memlayout.h"
 #include "kernel/riscv.h"
 
-
-#include "kernel/spinlock.h"  // NEW INCLUDE FOR ASS2
-#include "Csemaphore.h"   // NEW INCLUDE FOR ASS 2
-#include "kernel/proc.h"         // NEW INCLUDE FOR ASS 2, has all the signal definitions and sigaction definition.  Alternatively, copy the relevant things into user.h and include only it, and then no need to include spinlock.h .
+#include "Csemaphore.h"   // NEW INCLUDE FOR ASS 2.
 
 
 //
