@@ -4,4 +4,22 @@
         "cstdlib": "c",
         "type_traits": "c"
     },
+    "files.exclude": {
+        "mkfs/mkfs": true,
+        "user/initcode": true,
+        "kernel/kernel": true,
+        "**/*~": true,
+        "**/_*": true,
+        "**/*.o": true,
+        "**/*.d": true,
+        "**/*.asm": true,
+        "**/*.sym": true,
+        "**/*.img": true,
+        "**/*.out": true,
+        "**/vectors.S": true,
+        "**/bootblock": true,
+        "**/entryother": true,
+        "**/kernelmemfs": true,
+        "user/usys.S": true
+    },
 }
