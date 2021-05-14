@@ -82,6 +82,11 @@ struct trapframe {
 
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
+struct swapFilePage {
+  uint64 va;
+  int present;
+};
+
 // Per-process state
 struct proc {
   struct spinlock lock;
@@ -107,4 +112,7 @@ struct proc {
   char name[16];               // Process name (debugging)
 
   struct file *swapFile;
+
+  int allocatedPages;
+  struct swapFilePage swapFileEntries[MAX_PGOUT_PAGES];
 };

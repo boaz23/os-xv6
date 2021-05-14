@@ -135,6 +135,13 @@ found:
     return 0;
   }
 
+  if(createSwapFile(p) != 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
+  memset(&p->swapFileEntries, 0, sizeof(p->swapFileEntries));
+
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
@@ -150,6 +157,10 @@ found:
 static void
 freeproc(struct proc *p)
 {
+  if(p->swapFile != 0){
+    removeSwapFile(p);
+    p->swapFile = 0;
+  }
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
@@ -163,6 +174,7 @@ freeproc(struct proc *p)
   p->chan = 0;
   p->killed = 0;
   p->xstate = 0;
+  p->allocatedPages = 0;
   p->state = UNUSED;
 }
 
