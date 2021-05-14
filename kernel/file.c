@@ -104,7 +104,7 @@ filestat(struct file *f, uint64 addr)
 // Read from file f.
 // addr is a user virtual address.
 int
-fileread(struct file *f, uint64 addr, int n)
+fileread_core(struct file *f, uint64 addr, int n, int user_addr)
 {
   int r = 0;
 
@@ -119,7 +119,7 @@ fileread(struct file *f, uint64 addr, int n)
     r = devsw[f->major].read(1, addr, n);
   } else if(f->type == FD_INODE){
     ilock(f->ip);
-    if((r = readi(f->ip, 1, addr, f->off, n)) > 0)
+    if((r = readi(f->ip, user_addr, addr, f->off, n)) > 0)
       f->off += r;
     iunlock(f->ip);
   } else {
@@ -132,7 +132,7 @@ fileread(struct file *f, uint64 addr, int n)
 // Write to file f.
 // addr is a user virtual address.
 int
-filewrite(struct file *f, uint64 addr, int n)
+filewrite_core(struct file *f, uint64 addr, int n, int user_addr)
 {
   int r, ret = 0;
 
@@ -161,7 +161,7 @@ filewrite(struct file *f, uint64 addr, int n)
 
       begin_op();
       ilock(f->ip);
-      if ((r = writei(f->ip, 1, addr + i, f->off, n1)) > 0)
+      if ((r = writei(f->ip, user_addr, addr + i, f->off, n1)) > 0)
         f->off += r;
       iunlock(f->ip);
       end_op();
@@ -181,31 +181,27 @@ filewrite(struct file *f, uint64 addr, int n)
 }
 
 // Read from file f.
+// addr is a user virtual address.
+int
+fileread(struct file *f, uint64 addr, int n)
+{
+  return fileread_core(f, addr, n, 1);
+}
+
+// Write to file f.
+// addr is a user virtual address.
+int
+filewrite(struct file *f, uint64 addr, int n)
+{
+  return filewrite_core(f, addr, n, 1);
+}
+
+// Read from file f.
 // addr is a kernel virtual address.
 int
 kfileread(struct file *f, uint64 addr, int n)
 {
-  int r = 0;
-
-  if(f->readable == 0)
-    return -1;
-
-  if(f->type == FD_PIPE){
-    r = piperead(f->pipe, addr, n);
-  } else if(f->type == FD_DEVICE){
-    if(f->major < 0 || f->major >= NDEV || !devsw[f->major].read)
-      return -1;
-    r = devsw[f->major].read(1, addr, n);
-  } else if(f->type == FD_INODE){
-    ilock(f->ip);
-    if((r = readi(f->ip, 0, addr, f->off, n)) > 0)
-      f->off += r;
-    iunlock(f->ip);
-  } else {
-    panic("fileread");
-  }
-
-  return r;
+  return fileread_core(f, addr, n, 0);
 }
 
 // Write to file f.
@@ -213,48 +209,5 @@ kfileread(struct file *f, uint64 addr, int n)
 int
 kfilewrite(struct file *f, uint64 addr, int n)
 {
-  int r, ret = 0;
-
-  if(f->writable == 0)
-    return -1;
-
-  if(f->type == FD_PIPE){
-    ret = pipewrite(f->pipe, addr, n);
-  } else if(f->type == FD_DEVICE){
-    if(f->major < 0 || f->major >= NDEV || !devsw[f->major].write)
-      return -1;
-    ret = devsw[f->major].write(1, addr, n);
-  } else if(f->type == FD_INODE){
-    // write a few blocks at a time to avoid exceeding
-    // the maximum log transaction size, including
-    // i-node, indirect block, allocation blocks,
-    // and 2 blocks of slop for non-aligned writes.
-    // this really belongs lower down, since writei()
-    // might be writing a device like the console.
-    int max = ((MAXOPBLOCKS-1-1-2) / 2) * BSIZE;
-    int i = 0;
-    while(i < n){
-      int n1 = n - i;
-      if(n1 > max)
-        n1 = max;
-
-      begin_op();
-      ilock(f->ip);
-      if ((r = writei(f->ip, 0, addr + i, f->off, n1)) > 0)
-        f->off += r;
-      iunlock(f->ip);
-      end_op();
-
-      if(r != n1){
-        // error from writei
-        break;
-      }
-      i += r;
-    }
-    ret = (i == n ? n : -1);
-  } else {
-    panic("filewrite");
-  }
-
-  return ret;
+  return filewrite_core(f, addr, n, 0);
 }
