@@ -17,16 +17,14 @@
         "stdarg.h": "c",
         "signal.h": "c",
         "spinlock.h": "c",
-        "cmath": "c",
-        "limits": "c",
-        "*.tcc": "c",
-        "typeinfo": "c",
         "date.h": "c",
-        "defs.h": "c"
+        "defs.h": "c",
     },
     "files.exclude": {
-        "**/": false,
-        "**/*.*": false,
+        "mkfs/mkfs": true,
+        "user/initcode": true,
+        "kernel/kernel": true,
+        "user/usys.S": true,
         "**/*~": true,
         "**/_*": true,
         "**/*.o": true,
@@ -38,12 +36,6 @@
         "**/vectors.S": true,
         "**/bootblock": true,
         "**/entryother": true,
-        "**/initcode": true,
-        "**/kernelmemfs": true,
-        "mkfs/mkfs": true,
-        "kernel/kernel": true,
-        "kernel/kernel.ld": true,
-        "user/usys.S": true,
-        "**/.gdbinit": true
+        "**/kernelmemfs": true
     },
 }

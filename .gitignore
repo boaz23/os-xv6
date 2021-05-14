@@ -13,9 +13,6 @@ _*
 vectors.S
 bootblock
 entryother
-initcode
 kernelmemfs
-mkfs/mkfs
-kernel/kernel
 user/usys.S
 .gdbinit
