@@ -15,3 +15,10 @@
 #define MAX_PSYC_PAGES  16
 #define MAX_PGOUT_PAGES (MAX_TOTAL_PAGES - MAX_PSYC_PAGES)
 #define MAX_TOTAL_PAGES 32
+
+#define RANGE(var, start, end, step) for (var = (start); var < (end); var += (step))
+
+#define INDEX_OF(i, a) ((i) - (a))
+#define ARR_LEN(a) (sizeof((a)) / sizeof((a)[0]))
+#define ARR_END(a) (&((a)[ARR_LEN(a)]))
+#define FOR_EACH(var, a) for (i = (a); i < ARR_END(a); i++)

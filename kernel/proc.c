@@ -135,13 +135,6 @@ found:
     return 0;
   }
 
-  if(createSwapFile(p) != 0){
-    freeproc(p);
-    release(&p->lock);
-    return 0;
-  }
-  memset(&p->swapFileEntries, 0, sizeof(p->swapFileEntries));
-
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
@@ -174,7 +167,8 @@ freeproc(struct proc *p)
   p->chan = 0;
   p->killed = 0;
   p->xstate = 0;
-  p->allocatedPages = 0;
+  p->ignorePageSwapping = 0;
+  p->ignorePageSwapping_parent = 0;
   p->state = UNUSED;
 }
 
@@ -211,6 +205,20 @@ proc_pagetable(struct proc *p)
   return pagetable;
 }
 
+void
+proc_insert_mpe_at(struct proc *p, int i, uint64 va)
+{
+  proc_set_mpe(p, &p->memoryPageEntries[i], va);
+}
+
+void
+proc_set_mpe(struct proc *p, struct memoryPageEntry *mpe, uint64 va)
+{
+  mpe->va = va;
+  mpe->present = 1;
+  p->pagesInMemory++;
+}
+
 // Free a process's page table, and free the
 // physical memory it refers to.
 void
@@ -241,6 +249,7 @@ userinit(void)
 
   p = allocproc();
   initproc = p;
+  p->ignorePageSwapping = 1;
   
   // allocate one user page and copy init's instructions
   // and data into it.
@@ -264,16 +273,48 @@ userinit(void)
 int
 growproc(int n)
 {
-  uint sz;
+  uint64 sz;
+  uint64 oldsz;
+  uint64 va;
+  int allocatedPagesCount;
+  int totalAllocatedPages;
+  int pagesNotSetCount;
+  struct memoryPageEntry *mpe;
   struct proc *p = myproc();
 
-  sz = p->sz;
+  oldsz = sz = p->sz;
+
+  totalAllocatedPages = p->pagesInMemory + p->pagesInDisk;
+  allocatedPagesCount = (PGROUNDUP(sz + n) - PGROUNDUP(sz)) / PGSIZE;
+
   if(n > 0){
+    if (totalAllocatedPages + allocatedPagesCount > MAX_TOTAL_PAGES) {
+      return -1;
+    }
     if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
       return -1;
     }
+
+    va = oldsz;
+    mpe = p->memoryPageEntries;
+    pagesNotSetCount = allocatedPagesCount;
+    // fill all available slots
+    for (; mpe < ARR_END(p->memoryPageEntries) && pagesNotSetCount > 0; mpe++) {
+      if (mpe->present) {
+        continue;
+      }
+
+      proc_set_mpe(p, mpe, va);
+      va += PGSIZE;
+      pagesNotSetCount--;
+    }
+    if (pagesNotSetCount > 0) {
+      // TODO: insert the left over pages to the swap file
+    }
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
+    // TODO: remove pages from the data structures
+    // TODO: also remove pages from swap file
   }
   p->sz = sz;
   return 0;
@@ -284,13 +325,21 @@ growproc(int n)
 int
 fork(void)
 {
-  int i, pid;
+  int i, pid, ignorePageSwapping;
   struct proc *np;
   struct proc *p = myproc();
+
+  ignorePageSwapping = p == initproc;
 
   // Allocate process.
   if((np = allocproc()) == 0){
     return -1;
+  }
+
+  if (!ignorePageSwapping && createSwapFile(np) != 0) {
+    freeproc(np);
+    release(&np->lock);
+    return 0;
   }
 
   // Copy user memory from parent to child.
@@ -299,7 +348,20 @@ fork(void)
     release(&np->lock);
     return -1;
   }
+
   np->sz = p->sz;
+  
+  np->ignorePageSwapping = ignorePageSwapping;
+  np->ignorePageSwapping_parent = p->ignorePageSwapping;
+  // whether the new process is not initproc or the shell
+  if (!ignorePageSwapping && !p->ignorePageSwapping) {
+    np->pagesInMemory = p->pagesInMemory;
+    np->pagesInDisk = p->pagesInDisk;
+    memmove(&np->memoryPageEntries, &p->memoryPageEntries, sizeof(np->memoryPageEntries));
+    memmove(&np->swapFileEntries, &p->swapFileEntries, sizeof(np->swapFileEntries));
+    // TODO: copy swapping file content as well
+  }
+
 
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);

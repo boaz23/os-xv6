@@ -82,7 +82,11 @@ struct trapframe {
 
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
-struct swapFilePage {
+struct swapFileEntry {
+  uint64 va;
+  int present;
+};
+struct memoryPageEntry {
   uint64 va;
   int present;
 };
@@ -113,6 +117,10 @@ struct proc {
 
   struct file *swapFile;
 
-  int allocatedPages;
-  struct swapFilePage swapFileEntries[MAX_PGOUT_PAGES];
+  int ignorePageSwapping;
+  int ignorePageSwapping_parent;
+  int pagesInMemory;
+  int pagesInDisk;
+  struct memoryPageEntry memoryPageEntries[MAX_PSYC_PAGES];
+  struct swapFileEntry swapFileEntries[MAX_PGOUT_PAGES];
 };
