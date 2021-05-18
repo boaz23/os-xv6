@@ -298,7 +298,7 @@ freewalk(pagetable_t pagetable)
       pagetable[i] = 0;
     }
     #ifdef PG_REPLACE_NONE
-    if(pte & PTE_V)
+    else if(pte & PTE_V)
     #else
     // leafs can either be valid and not paged-out or paged-out and not valid
     // so a leaf will have at least one of these.
