@@ -354,12 +354,20 @@ fork(void)
   np->ignorePageSwapping = ignorePageSwapping;
   np->ignorePageSwapping_parent = p->ignorePageSwapping;
   // whether the new process is not initproc or the shell
-  if (!ignorePageSwapping && !p->ignorePageSwapping) {
-    np->pagesInMemory = p->pagesInMemory;
-    np->pagesInDisk = p->pagesInDisk;
-    memmove(&np->memoryPageEntries, &p->memoryPageEntries, sizeof(np->memoryPageEntries));
-    memmove(&np->swapFileEntries, &p->swapFileEntries, sizeof(np->swapFileEntries));
-    // TODO: copy swapping file content as well
+  if (!ignorePageSwapping) {
+    if (p->ignorePageSwapping) {
+      // a child of the shell
+      // need to manually initialize the data structures
+      // TODO: manually initilize the data sturctures. take paging scheduler into account, it needs to be called if sz > MAX_PYSC_PAGES*PG_SIZE
+    }
+    else {
+      // the parent is a regular process, we can just copy his
+      np->pagesInMemory = p->pagesInMemory;
+      np->pagesInDisk = p->pagesInDisk;
+      memmove(&np->memoryPageEntries, &p->memoryPageEntries, sizeof(np->memoryPageEntries));
+      memmove(&np->swapFileEntries, &p->swapFileEntries, sizeof(np->swapFileEntries));
+      // TODO: copy swapping file content as well
+    }
   }
 
 
