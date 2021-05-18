@@ -250,6 +250,7 @@ userinit(void)
   p = allocproc();
   initproc = p;
   p->ignorePageSwapping = 1;
+  p->ignorePageSwapping_parent = 1;
   
   // allocate one user page and copy init's instructions
   // and data into it.
@@ -735,4 +736,168 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+struct swapFileEntry*
+proc_findFreeSwapFileEntry(struct proc *p)
+{
+  struct swapFileEntry *sfe;
+  FOR_EACH(sfe, p->swapFileEntries) {
+    if (!sfe->present) {
+      return sfe;
+    }
+  }
+
+  return 0;
+}
+
+int
+proc_swapPageOut(struct memoryPageEntry *mpe, uint64 *ppa)
+{
+  struct proc *p = myproc();
+  struct swapFileEntry *sfe = proc_findFreeSwapFileEntry(p);
+  if (!sfe) {
+    return -2;
+  }
+
+  return proc_swapPageOut_core(mpe, sfe, ppa);
+}
+
+int
+proc_swapPageOut_core(struct memoryPageEntry *mpe, struct swapFileEntry *sfe, uint64 *ppa)
+{
+  uint64 pa;
+  pte_t *pte;
+  struct proc *p = myproc();
+
+  if (p->ignorePageSwapping) {
+    panic("page swap out: ignored process");
+  }
+
+  if (!mpe) {
+    panic("page swap out: null mpe");
+  }
+  if (!(0 <= INDEX_OF_MPE(p, mpe) && INDEX_OF_MPE(p, mpe) < MAX_PSYC_PAGES)) {
+    panic("page swap out: index out of range");
+  }
+  if (!mpe->present) {
+    panic("page swap out: page not present");
+  }
+
+  if (!sfe) {
+    panic("page swap out: no swap file entry selected");
+  }
+  if (!(0 <= INDEX_OF_SFE(p, sfe) && INDEX_OF_SFE(p, sfe) < MAX_PGOUT_PAGES)) {
+    panic("page swap out: sfe index out of range");
+  }
+  if (sfe->present) {
+    panic("page swap out: swap file entry is present");
+  }
+
+  pte = walk(p->pagetable, mpe->va, 0);
+  if (!pte) {
+    panic("page swap out: pte not found");
+  }
+  if (*pte & (~PTE_V)) {
+    panic("page swap out: non valid pte");
+  }
+  if (*pte & PTE_PG) {
+    panic("page swap out: paged out pte");
+  }
+
+  pa = PTE2PA(*pte);
+  if (writeToSwapFile(p, (char *)pa, SFE_OFFSET(p, sfe), PGSIZE) < 0) {
+    return -1;
+  }
+  sfe->va = mpe->va;
+  sfe->present = 1;
+  mpe->va = 0;
+  mpe->present = 0;
+  *pte = (*pte | PTE_PG) & (~PTE_V);
+  if (ppa) {
+    // the caller wants the physical address and wants the page in the memoery,
+    // do not free
+    *ppa = pa;
+  }
+  else {
+    kfree((void *)pa);
+    p->pagesInMemory--;
+  }
+  p->pagesInDisk++;
+  return 0;
+}
+
+void
+proc_swapPageIn(struct swapFileEntry *sfe, struct memoryPageEntry *mpe)
+{
+  pte_t *pte;
+  uint64 pa_dst;
+  uint64 va_src;
+  void *sfe_buffer;
+  struct proc *p = myproc();
+
+  if (p->ignorePageSwapping) {
+    panic("page swap in: ignored process");
+  }
+
+  if (!sfe) {
+    panic("page swap in: no swap file entry to swap in");
+  }
+  if (!(0 <= INDEX_OF_SFE(p, sfe) && INDEX_OF_SFE(p, sfe) < MAX_PGOUT_PAGES)) {
+    panic("page swap in: sfe index out of range");
+  }
+  if (!sfe->present) {
+    panic("page swap in: swap file entry not present");
+  }
+
+  if (!mpe) {
+    panic("page swap in: no memory page to swap out");
+  }
+  if (!(0 <= INDEX_OF_MPE(p, mpe) && INDEX_OF_MPE(p, mpe) < MAX_PSYC_PAGES)) {
+    panic("page swap in: mpe index out of range");
+  }
+  if (!mpe->present) {
+    panic("page swap in: memory page not present");
+  }
+
+  pte = walk(p->pagetable, sfe->va, 0);
+  if (!pte) {
+    panic("page swap in: pte not found");
+  }
+  if (*pte & PTE_V) {
+    panic("page swap in: valid pte");
+  }
+  if (*pte & (~PTE_PG)) {
+    panic("page swap in: non-paged out pte");
+  }
+
+  // We want to swap out a memory page in favor the specified page in the swap file.
+  // This is because the memory is full and the page replacement algorithm
+  // selected this memory page.
+
+  sfe_buffer = kalloc();
+  if (!sfe_buffer) {
+    return -1;
+  }
+  if (readFromSwapFile(p, (char *)sfe_buffer, SFE_OFFSET(p, sfe), PGSIZE) < 0) {
+    kfree(sfe_buffer);
+    return -1;
+  }
+
+  sfe->present = 0;
+  va_src = sfe->va;
+  pa_dst = (uint64)sfe_buffer;
+
+  if (proc_swapPageOut_core(mpe, sfe, 0) < 0) {
+    sfe->present = 1;
+    kfree(sfe_buffer);
+    return -1;
+  }
+  
+  mpe->va = va_src;
+  mpe->present = 1;
+  *pte = PA2PTE(pa_dst) | PTE_FLAGS((*pte | PTE_V) & (~PTE_PG));
+  p->pagesInMemory++;
+  p->pagesInDisk--;
+  return 0;
 }

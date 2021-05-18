@@ -21,4 +21,4 @@
 #define INDEX_OF(i, a) ((i) - (a))
 #define ARR_LEN(a) (sizeof((a)) / sizeof((a)[0]))
 #define ARR_END(a) (&((a)[ARR_LEN(a)]))
-#define FOR_EACH(var, a) for (i = (a); i < ARR_END(a); i++)
+#define FOR_EACH(var, a) for (var = (a); var < ARR_END(a); var++)
