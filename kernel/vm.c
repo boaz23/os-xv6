@@ -85,6 +85,10 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
 
   for(int level = 2; level > 0; level--) {
     pte_t *pte = &pagetable[PX(level, va)];
+    if (*pte & PTE_PG) {
+      // in our page swapping, only leaf pages are paged out
+      panic("walk non-leaf PG page");
+    }
     if(*pte & PTE_V) {
       pagetable = (pagetable_t)PTE2PA(*pte);
     } else {
@@ -112,7 +116,11 @@ walkaddr(pagetable_t pagetable, uint64 va)
   pte = walk(pagetable, va, 0);
   if(pte == 0)
     return 0;
+  #ifdef PG_REPLACE_NONE
   if((*pte & PTE_V) == 0)
+  #else
+  if((*pte & (PTE_V | PTE_PG)) == 0)
+  #endif
     return 0;
   if((*pte & PTE_U) == 0)
     return 0;
@@ -145,9 +153,15 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
   for(;;){
     if((pte = walk(pagetable, a, 1)) == 0)
       return -1;
+    #ifdef PG_REPLACE_NONE
     if(*pte & PTE_V)
+    #else
+    // a page can also be be paged out (and therefore still mapped)
+    // (paged out flags: ~PTE_V | PTE_PG)
+    if(*pte & (PTE_V | PTE_PG))
+    #endif
       panic("remap");
-    *pte = PA2PTE(pa) | perm | PTE_V;
+    *pte = PA2PTE(pa) | PTE_FLAGS(perm | PTE_V);
     if(a == last)
       break;
     a += PGSIZE;
@@ -171,11 +185,22 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
     if((pte = walk(pagetable, a, 0)) == 0)
       panic("uvmunmap: walk");
+    #ifdef PG_REPLACE_NONE
     if((*pte & PTE_V) == 0)
+    #else
+    // a page can also be be paged out (and therefore still mapped)
+    if((*pte & (PTE_V | PTE_PG)) == 0)
+    #endif
       panic("uvmunmap: not mapped");
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
-    if(do_free){
+    #ifdef PG_REPLACE_NONE
+    if(do_free)
+    #else
+    // do not free a paged out page (as it was already freed)
+    if(do_free && (*pte & ~PTE_PG))
+    #endif
+    {
       uint64 pa = PTE2PA(*pte);
       kfree((void*)pa);
     }
@@ -271,7 +296,15 @@ freewalk(pagetable_t pagetable)
       uint64 child = PTE2PA(pte);
       freewalk((pagetable_t)child);
       pagetable[i] = 0;
-    } else if(pte & PTE_V){
+    }
+    #ifdef PG_REPLACE_NONE
+    if(pte & PTE_V)
+    #else
+    // leafs can either be valid and not paged-out or paged-out and not valid
+    // so a leaf will have at least one of these.
+    else if(pte & (PTE_V | PTE_PG))
+    #endif
+    {
       panic("freewalk: leaf");
     }
   }
@@ -305,15 +338,37 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
       panic("uvmcopy: pte should exist");
+    #ifdef PG_REPLACE_NONE
     if((*pte & PTE_V) == 0)
+    #else
+    // In the original xv6, a leaf page which is not valid is not present.
+    // However, in our version, a leaf page can also be paged out (and it is still mapped)
+    if((*pte & (PTE_V | PTE_PG)) == 0)
+    #endif
+    {
       panic("uvmcopy: page not present");
+    }
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
+    #ifndef PG_REPLACE_NONE
+    // if the leaf page is indeed paged out, we do not want to
+    // do memory allocations and copy to that (not allocated) memory
+    if (*pte & PTE_PG) {
+      mem = 0;
+    }
+    else {
+    #endif
+      if((mem = kalloc()) == 0)
+        goto err;
+      memmove(mem, (char*)pa, PGSIZE);
+    #ifndef PG_REPLACE_NONE
+    }
+    #endif
     if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+      // might not be allocated, see above note
+      if (mem) {
+        kfree(mem);
+      }
       goto err;
     }
   }
