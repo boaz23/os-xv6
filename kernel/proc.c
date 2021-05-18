@@ -18,6 +18,9 @@ struct spinlock pid_lock;
 extern void forkret(void);
 static void freeproc(struct proc *p);
 
+void proc_set_mpe(struct proc *p, struct memoryPageEntry *mpe, uint64 va);
+void proc_insert_mpe_at(struct proc *p, int i, uint64 va);
+
 extern char trampoline[]; // trampoline.S
 
 // helps ensure that wakeups of wait()ing
@@ -205,20 +208,6 @@ proc_pagetable(struct proc *p)
   return pagetable;
 }
 
-void
-proc_set_mpe(struct proc *p, struct memoryPageEntry *mpe, uint64 va)
-{
-  mpe->va = va;
-  mpe->present = 1;
-  p->pagesInMemory++;
-}
-
-void
-proc_insert_mpe_at(struct proc *p, int i, uint64 va)
-{
-  proc_set_mpe(p, &p->memoryPageEntries[i], va);
-}
-
 // Free a process's page table, and free the
 // physical memory it refers to.
 void
@@ -343,6 +332,9 @@ fork(void)
     return 0;
   }
 
+  np->ignorePageSwapping = ignorePageSwapping;
+  np->ignorePageSwapping_parent = p->ignorePageSwapping;
+
   // Copy user memory from parent to child.
   if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
     freeproc(np);
@@ -352,14 +344,25 @@ fork(void)
 
   np->sz = p->sz;
   
-  np->ignorePageSwapping = ignorePageSwapping;
-  np->ignorePageSwapping_parent = p->ignorePageSwapping;
   // whether the new process is not initproc or the shell
   if (!ignorePageSwapping) {
     if (p->ignorePageSwapping) {
-      // a child of the shell
-      // need to manually initialize the data structures
-      // TODO: manually initilize the data sturctures. take paging scheduler into account, it needs to be called if sz > MAX_PYSC_PAGES*PG_SIZE
+      // A child of the shell.
+      // Since the shell can theoretically have unlimited pages in memory,
+      // and therefore more than MAX_TOTAL_PAGES,
+      // if the shell forks with such amount of pages,
+      // the fork cannot manually initialize the data structures as it
+      // would violate the restriction that all process (except for the shell and init)
+      // must have less than 32 pages.
+
+      // Thus, we allow such a case to occur temporarily here,
+      // and we therefore assume that an exec syscall is to come
+      // immediately and the data structures would be initialized there.
+      
+      // TODO: Manually initilize the data sturctures,
+      // only if the shell has less than or equal to MAX_TOTAL_PAGES number of pages.
+      // Take paging scheduler into account,
+      // it needs to be called if sz > MAX_PYSC_PAGES*PG_SIZE.
     }
     else {
       // the parent is a regular process, we can just copy his
@@ -370,7 +373,6 @@ fork(void)
       // TODO: copy swapping file content as well
     }
   }
-
 
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
@@ -738,6 +740,47 @@ procdump(void)
   }
 }
 
+void
+proc_set_mpe(struct proc *p, struct memoryPageEntry *mpe, uint64 va)
+{
+  mpe->va = va;
+  mpe->present = 1;
+  p->pagesInMemory++;
+}
+
+void
+proc_insert_mpe_at(struct proc *p, int i, uint64 va)
+{
+  proc_set_mpe(p, &p->memoryPageEntries[i], va);
+}
+
+struct memoryPageEntry*
+findSwapPageCandidate(struct proc *p)
+{
+  // for now, just an algorithm which returns the first valid page
+  struct memoryPageEntry *mpe;
+  FOR_EACH(mpe, p->memoryPageEntries) {
+    if (mpe->present && mpe->va) {
+      return mpe;
+    }
+  }
+
+  return 0;
+}
+
+struct memoryPageEntry*
+proc_findFreememoryPageEntry(struct proc *p)
+{
+  struct memoryPageEntry *mpe;
+  FOR_EACH(mpe, p->memoryPageEntries) {
+    if (!mpe->present) {
+      return mpe;
+    }
+  }
+
+  return 0;
+}
+
 struct swapFileEntry*
 proc_findFreeSwapFileEntry(struct proc *p)
 {
@@ -908,4 +951,31 @@ proc_swapPageIn(struct swapFileEntry *sfe, struct memoryPageEntry *mpe)
   p->pagesInDisk--;
   return 0;
   #endif
+}
+
+int
+proc_inset_mpe(uint64 va)
+{
+  int err;
+  struct memoryPageEntry *mpe;
+  struct proc *p = myproc();
+  if (p->pagesInMemory == MAX_PSYC_PAGES) {
+    mpe = findSwapPageCandidate(p);
+    err = proc_swapPageOut(mpe, 0);
+    if (err == -2) {
+      panic("insert mpe: process memory exeeded MAX_TOTAL pages");
+    }
+    if (err < 0) {
+      return -1;
+    }
+  }
+  else {
+    mpe = proc_findFreememoryPageEntry(p);
+    if (!mpe) {
+      panic("insert mpe: free mpe not found but process has max pages in memory");
+    }
+  }
+
+  proc_set_mpe(p, mpe, va);
+  return 0;
 }
