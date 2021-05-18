@@ -129,9 +129,7 @@ exec(char *path, char **argv)
     p->pagesInDisk = 0;
     memset(&p->swapFileEntries, 0, sizeof(p->swapFileEntries));
     memset(&p->memoryPageEntries, 0, sizeof(p->memoryPageEntries));
-    proc_insert_mpe_at(p, 0, TRAMPOLINE);
-    proc_insert_mpe_at(p, 1, TRAPFRAME);
-    for (int va = 0, i = 2; va < sz; va += PGSIZE, i++) {
+    for (int va = 0, i = 0; va < sz; va += PGSIZE, i++) {
       proc_insert_mpe_at(p, i, va);
     }
   }
