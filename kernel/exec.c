@@ -21,7 +21,6 @@ exec(char *path, char **argv)
   pagetable_t pagetable = 0, oldpagetable;
   int memoryPagesCount;
   int va;
-  int i;
   struct proc *p = myproc();
 
   begin_op();
@@ -129,7 +128,7 @@ exec(char *path, char **argv)
     p->pagesInDisk = 0;
     memset(&p->swapFileEntries, 0, sizeof(p->swapFileEntries));
     memset(&p->memoryPageEntries, 0, sizeof(p->memoryPageEntries));
-    for (int va = 0, i = 0; va < sz; va += PGSIZE, i++) {
+    for (va = 0, i = 0; va < sz; va += PGSIZE, i++) {
       proc_insert_mpe_at(p, i, va);
     }
   }

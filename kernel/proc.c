@@ -206,17 +206,17 @@ proc_pagetable(struct proc *p)
 }
 
 void
-proc_insert_mpe_at(struct proc *p, int i, uint64 va)
-{
-  proc_set_mpe(p, &p->memoryPageEntries[i], va);
-}
-
-void
 proc_set_mpe(struct proc *p, struct memoryPageEntry *mpe, uint64 va)
 {
   mpe->va = va;
   mpe->present = 1;
   p->pagesInMemory++;
+}
+
+void
+proc_insert_mpe_at(struct proc *p, int i, uint64 va)
+{
+  proc_set_mpe(p, &p->memoryPageEntries[i], va);
 }
 
 // Free a process's page table, and free the
@@ -752,20 +752,11 @@ proc_findFreeSwapFileEntry(struct proc *p)
 }
 
 int
-proc_swapPageOut(struct memoryPageEntry *mpe, uint64 *ppa)
-{
-  struct proc *p = myproc();
-  struct swapFileEntry *sfe = proc_findFreeSwapFileEntry(p);
-  if (!sfe) {
-    return -2;
-  }
-
-  return proc_swapPageOut_core(mpe, sfe, ppa);
-}
-
-int
 proc_swapPageOut_core(struct memoryPageEntry *mpe, struct swapFileEntry *sfe, uint64 *ppa)
 {
+  #ifdef PG_REPLACE_NONE
+  panic("page swap out: no page replacement");
+  #else
   uint64 pa;
   pte_t *pte;
   struct proc *p = myproc();
@@ -825,11 +816,27 @@ proc_swapPageOut_core(struct memoryPageEntry *mpe, struct swapFileEntry *sfe, ui
   }
   p->pagesInDisk++;
   return 0;
+  #endif
 }
 
-void
+int
+proc_swapPageOut(struct memoryPageEntry *mpe, uint64 *ppa)
+{
+  struct proc *p = myproc();
+  struct swapFileEntry *sfe = proc_findFreeSwapFileEntry(p);
+  if (!sfe) {
+    return -2;
+  }
+
+  return proc_swapPageOut_core(mpe, sfe, ppa);
+}
+
+int
 proc_swapPageIn(struct swapFileEntry *sfe, struct memoryPageEntry *mpe)
 {
+  #ifdef PG_REPLACE_NONE
+  panic("page swap in: no page replacement");
+  #else
   pte_t *pte;
   uint64 pa_dst;
   uint64 va_src;
@@ -900,4 +907,5 @@ proc_swapPageIn(struct swapFileEntry *sfe, struct memoryPageEntry *mpe)
   p->pagesInMemory++;
   p->pagesInDisk--;
   return 0;
+  #endif
 }
