@@ -3,6 +3,8 @@
 #include "memlayout.h"
 #include "elf.h"
 #include "riscv.h"
+#include "spinlock.h"
+#include "proc.h"
 #include "defs.h"
 #include "fs.h"
 
@@ -182,6 +184,7 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
   if((va % PGSIZE) != 0)
     panic("uvmunmap: not aligned");
 
+  // TODO: extract method
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
     if((pte = walk(pagetable, a, 0)) == 0)
       panic("uvmunmap: walk");
@@ -204,6 +207,47 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
       uint64 pa = PTE2PA(*pte);
       kfree((void*)pa);
     }
+    *pte = 0;
+  }
+}
+
+void
+uvmunmap_withSwapping(uint64 va, uint64 npages, int do_free)
+{
+  uint64 a;
+  pte_t *pte;
+  pagetable_t pagetable;
+  struct proc *p;
+
+  if((va % PGSIZE) != 0)
+    panic("uvmunmap: not aligned");
+
+  p = myproc();
+  pagetable = p->pagetable;
+
+  for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
+    if((pte = walk(pagetable, a, 0)) == 0)
+      panic("uvmunmap: walk");
+    #ifdef PG_REPLACE_NONE
+    if((*pte & PTE_V) == 0)
+    #else
+    // a page can also be be paged out (and therefore still mapped)
+    if((*pte & (PTE_V | PTE_PG)) == 0)
+    #endif
+      panic("uvmunmap: not mapped");
+    if(PTE_FLAGS(*pte) == PTE_V)
+      panic("uvmunmap: not a leaf");
+    #ifdef PG_REPLACE_NONE
+    if(do_free)
+    #else
+    // do not free a paged out page (as it was already freed)
+    if(do_free && (*pte & ~PTE_PG))
+    #endif
+    {
+      uint64 pa = PTE2PA(*pte);
+      kfree((void*)pa);
+    }
+    proc_remove_va(p, va);
     *pte = 0;
   }
 }
@@ -265,10 +309,61 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
   return newsz;
 }
 
+uint64
+uvmalloc_withSwapping(uint64 newsz)
+{
+  char *mem;
+  uint64 a;
+  uint64 oldsz;
+  int pagesToAllocateCount;
+  int totalAllocatedPages;
+  pagetable_t pagetable;
+  struct proc *p;
+
+  p = myproc();
+  oldsz = p->sz;
+  pagetable = p->pagetable;
+
+  if(newsz < oldsz)
+    return oldsz;
+    
+  totalAllocatedPages = p->pagesInMemory + p->pagesInDisk;
+  pagesToAllocateCount = (PGROUNDUP(newsz) - PGROUNDUP(oldsz)) / PGSIZE;
+  totalAllocatedPages += pagesToAllocateCount;
+  if (totalAllocatedPages > MAX_TOTAL_PAGES) {
+    return -1;
+  }
+
+  // TODO: call the dealloc which also removes mpes
+  oldsz = PGROUNDUP(oldsz);
+  for(a = oldsz; a < newsz; a += PGSIZE){
+    #ifndef PG_REPLACE_NONE
+    if (!p->ignorePageSwapping && !proc_insert_va_to_memory_force(a)) {
+      uvmdealloc(pagetable, a, oldsz);
+      return 0;
+    }
+    #endif
+    // TODO: extract method
+    mem = kalloc();
+    if(mem == 0){
+      uvmdealloc(pagetable, a, oldsz);
+      return 0;
+    }
+    memset(mem, 0, PGSIZE);
+    if(mappages(pagetable, a, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
+      kfree(mem);
+      uvmdealloc(pagetable, a, oldsz);
+      return 0;
+    }
+  }
+  return newsz;
+}
+
 // Deallocate user pages to bring the process size from oldsz to
 // newsz.  oldsz and newsz need not be page-aligned, nor does newsz
 // need to be less than oldsz.  oldsz can be larger than the actual
 // process size.  Returns the new process size.
+// TODO: split to a function which also removes MPEs.
 uint64
 uvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
 {

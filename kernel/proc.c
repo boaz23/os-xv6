@@ -264,47 +264,17 @@ int
 growproc(int n)
 {
   uint64 sz;
-  uint64 oldsz;
-  uint64 va;
-  int allocatedPagesCount;
-  int totalAllocatedPages;
-  int pagesNotSetCount;
-  struct memoryPageEntry *mpe;
   struct proc *p = myproc();
 
-  oldsz = sz = p->sz;
-
-  totalAllocatedPages = p->pagesInMemory + p->pagesInDisk;
-  allocatedPagesCount = (PGROUNDUP(sz + n) - PGROUNDUP(sz)) / PGSIZE;
+  sz = p->sz;
 
   if(n > 0){
-    if (totalAllocatedPages + allocatedPagesCount > MAX_TOTAL_PAGES) {
+    if((sz = uvmalloc_withSwapping(n)) == 0) {
       return -1;
-    }
-    if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
-      return -1;
-    }
-
-    va = oldsz;
-    mpe = p->memoryPageEntries;
-    pagesNotSetCount = allocatedPagesCount;
-    // fill all available slots
-    for (; mpe < ARR_END(p->memoryPageEntries) && pagesNotSetCount > 0; mpe++) {
-      if (mpe->present) {
-        continue;
-      }
-
-      proc_set_mpe(p, mpe, va);
-      va += PGSIZE;
-      pagesNotSetCount--;
-    }
-    if (pagesNotSetCount > 0) {
-      // TODO: insert the left over pages to the swap file
     }
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
-    // TODO: remove pages from the data structures
-    // TODO: also remove pages from swap file
+    // TODO: call the dealloc which also removes mpes
   }
   p->sz = sz;
   return 0;
@@ -741,6 +711,30 @@ procdump(void)
 }
 
 void
+proc_clear_mpe(struct proc *p, struct memoryPageEntry *mpe)
+{
+  mpe->va = -1;
+  mpe->present = 0;
+  p->pagesInMemory--;
+}
+
+void
+proc_clear_sfe(struct proc *p, struct swapFileEntry *sfe)
+{
+  sfe->va = -1;
+  sfe->present = 0;
+  p->pagesInDisk--;
+}
+
+void
+proc_set_sfe(struct proc *p, struct swapFileEntry *sfe, uint64 va)
+{
+  sfe->va = va;
+  sfe->present = 1;
+  p->pagesInDisk++;
+}
+
+void
 proc_set_mpe(struct proc *p, struct memoryPageEntry *mpe, uint64 va)
 {
   mpe->va = va;
@@ -766,6 +760,53 @@ findSwapPageCandidate(struct proc *p)
   }
 
   return 0;
+}
+
+struct memoryPageEntry*
+proc_findMemoryPageEntryByVa(struct proc *p, uint64 va)
+{
+  struct memoryPageEntry *mpe;
+  FOR_EACH(mpe, p->memoryPageEntries) {
+    if (mpe->present && mpe->va == va) {
+      return mpe;
+    }
+  }
+
+  return 0;
+}
+
+struct swapFileEntry*
+proc_findSwapFileEntryByVa(struct proc *p, uint64 va)
+{
+  struct swapFileEntry *sfe;
+  FOR_EACH(sfe, p->swapFileEntries) {
+    if (sfe->present && sfe->va == va) {
+      return sfe;
+    }
+  }
+
+  return 0;
+}
+
+int
+proc_remove_va(struct proc *p, uint64 va)
+{
+  struct swapFileEntry *sfe;
+  struct memoryPageEntry *mpe;
+
+  mpe = proc_findMemoryPageEntryByVa(p, va);
+  if (mpe) {
+    proc_clear_mpe(p, mpe);
+    return 0;
+  }
+
+  sfe = proc_findSwapFileEntryByVa(p, va);
+  if (sfe) {
+    proc_clear_sfe(p, sfe);
+    return 0;
+  }
+
+  return -1;
 }
 
 struct memoryPageEntry*
@@ -843,6 +884,8 @@ proc_swapPageOut_core(struct memoryPageEntry *mpe, struct swapFileEntry *sfe, ui
   if (writeToSwapFile(p, (char *)pa, SFE_OFFSET(p, sfe), PGSIZE) < 0) {
     return -1;
   }
+
+  // TODO: extract method: clear_mpe, set_sfe
   sfe->va = mpe->va;
   sfe->present = 1;
   mpe->va = 0;
@@ -874,6 +917,7 @@ proc_swapPageOut(struct memoryPageEntry *mpe, uint64 *ppa)
   return proc_swapPageOut_core(mpe, sfe, ppa);
 }
 
+// TODO: handle the case the memory is not necessarily full
 int
 proc_swapPageIn(struct swapFileEntry *sfe, struct memoryPageEntry *mpe)
 {
@@ -944,6 +988,7 @@ proc_swapPageIn(struct swapFileEntry *sfe, struct memoryPageEntry *mpe)
     return -1;
   }
   
+  // TODO: extract method, set mpe
   mpe->va = va_src;
   mpe->present = 1;
   *pte = PA2PTE(pa_dst) | PTE_FLAGS((*pte | PTE_V) & (~PTE_PG));
@@ -953,8 +998,8 @@ proc_swapPageIn(struct swapFileEntry *sfe, struct memoryPageEntry *mpe)
   #endif
 }
 
-int
-proc_inset_mpe(uint64 va)
+struct memoryPageEntry*
+proc_insert_va_to_memory_force(uint64 va)
 {
   int err;
   struct memoryPageEntry *mpe;
@@ -966,7 +1011,7 @@ proc_inset_mpe(uint64 va)
       panic("insert mpe: process memory exeeded MAX_TOTAL pages");
     }
     if (err < 0) {
-      return -1;
+      return 0;
     }
   }
   else {
@@ -977,5 +1022,5 @@ proc_inset_mpe(uint64 va)
   }
 
   proc_set_mpe(p, mpe, va);
-  return 0;
+  return mpe;
 }
