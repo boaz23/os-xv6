@@ -180,7 +180,7 @@ pagetable_t     uvmcreate(void);
 void            uvminit(pagetable_t, uchar *, uint);
 uint64          uvmalloc(pagetable_t pagetable, uint64 oldsz, struct file *swapFile, int ignoreSwapping, struct pagingMetadata *pmd, uint64 newsz);
 uint64          uvmdealloc(pagetable_t pagetable, struct pagingMetadata *pmd, int ignoreSwapping, uint64 oldsz, uint64 newsz);
-int             uvmcopy(pagetable_t, pagetable_t, uint64);
+int             uvmcopy(pagetable_t old, pagetable_t new, uint64 sz, int ignoreSwapping, struct pagingMetadata *pmd, struct file *swapFile);
 void            uvmfree(pagetable_t, uint64);
 void            uvmunmap(pagetable_t pagetable, struct pagingMetadata *pmd, int ignoreSwapping, uint64 va, uint64 npages, int do_free);
 void            uvmclear(pagetable_t, uint64);

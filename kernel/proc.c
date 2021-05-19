@@ -136,6 +136,8 @@ found:
     return 0;
   }
 
+  p->ignorePageSwapping = 0;
+  p->ignorePageSwapping_parent = 0;
   memset(&p->pagingMetadata, 0, sizeof(p->pagingMetadata));
 
   // Set up new context to start executing at forkret,
@@ -170,8 +172,6 @@ freeproc(struct proc *p)
   p->chan = 0;
   p->killed = 0;
   p->xstate = 0;
-  p->ignorePageSwapping = 0;
-  p->ignorePageSwapping_parent = 0;
   p->state = UNUSED;
 }
 
@@ -284,22 +284,23 @@ growproc(int n)
 int
 fork(void)
 {
-  int i, pid, ignorePageSwapping;
+  int i, pid;
+  int ignorePageSwapping;
+  int copyIgnorePagingMetadata;
   struct proc *np;
   struct proc *p = myproc();
-
-  ignorePageSwapping = p == initproc;
 
   // Allocate process.
   if((np = allocproc()) == 0){
     return -1;
   }
 
-  np->ignorePageSwapping = ignorePageSwapping;
+  np->ignorePageSwapping = p == initproc;
   np->ignorePageSwapping_parent = p->ignorePageSwapping;
   
+  copyIgnorePagingMetadata = 1;
   // whether the new process is not initproc or the shell
-  if (!ignorePageSwapping) {
+  if (!np->ignorePageSwapping) {
     if (createSwapFile(np) != 0) {
       freeproc(np);
       release(&np->lock);
@@ -323,6 +324,9 @@ fork(void)
       // only if the shell has less than or equal to MAX_TOTAL_PAGES number of pages.
       // Take paging scheduler into account,
       // it needs to be called if sz > MAX_PYSC_PAGES*PG_SIZE.
+      if (p->sz / PGSIZE < MAX_TOTAL_PAGES) {
+        copyIgnorePagingMetadata = 0;
+      }
     }
     else {
       // the parent is a regular process, we can just copy his
@@ -336,7 +340,7 @@ fork(void)
   }
 
   // Copy user memory from parent to child.
-  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
+  if(uvmcopy(p->pagetable, np->pagetable, p->sz, copyIgnorePagingMetadata, &np->pagingMetadata, np->swapFile) < 0){
     freeproc(np);
     release(&np->lock);
     return -1;

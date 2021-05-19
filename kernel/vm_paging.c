@@ -126,6 +126,9 @@ pmd_insert_va_to_memory_force(struct pagingMetadata *pmd, pagetable_t pagetable,
 {
   int err;
   struct memoryPageEntry *mpe;
+  if (ignoreSwapping) {
+    return 0;
+  }
   if (pmd->pagesInMemory == MAX_PSYC_PAGES) {
     if (!swapFile) {
       return 0;

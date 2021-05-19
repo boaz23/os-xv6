@@ -355,7 +355,7 @@ uvmfree(pagetable_t pagetable, uint64 sz)
 // returns 0 on success, -1 on failure.
 // frees any allocated pages on failure.
 int
-uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
+uvmcopy(pagetable_t old, pagetable_t new, uint64 sz, int ignoreSwapping, struct pagingMetadata *pmd, struct file *swapFile)
 {
   pte_t *pte;
   uint64 pa, i;
@@ -376,6 +376,13 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     {
       panic("uvmcopy: page not present");
     }
+
+    #ifndef PG_REPLACE_NONE
+    if (!ignoreSwapping && !pmd_insert_va_to_memory_force(pmd, new, swapFile, ignoreSwapping, i)) {
+      goto err;
+    }
+    #endif
+
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
     #ifndef PG_REPLACE_NONE
@@ -404,7 +411,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 
  err:
  // TODO: change later when changing this function
-  uvmunmap(new, 0, 1, 0, i / PGSIZE, 1);
+  uvmunmap(new, pmd, ignoreSwapping, 0, i / PGSIZE, 1);
   return -1;
 }
 
