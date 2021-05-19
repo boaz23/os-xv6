@@ -199,7 +199,7 @@ uvmunmap(pagetable_t pagetable, struct pagingMetadata *pmd, int ignoreSwapping, 
     if(do_free)
     #else
     // do not free a paged out page (as it was already freed)
-    if(do_free && (*pte & (~PTE_PG)))
+    if(do_free && (!(*pte & PTE_PG)))
     #endif
     {
       uint64 pa = PTE2PA(*pte);
@@ -360,7 +360,6 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz, int ignoreSwapping, struct 
   uint flags;
   char *mem;
 
- // TODO: change later
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
       panic("uvmcopy: pte should exist");
@@ -383,6 +382,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz, int ignoreSwapping, struct 
     if (*pte & PTE_PG) {
       mem = 0;
 
+      // TODO: implemented if needed
       if (!ignoreSwapping) {
         panic("uvmcopy: paged out page not implemented (because it's shell fork only)");
       }
@@ -409,7 +409,6 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz, int ignoreSwapping, struct 
   return 0;
 
  err:
- // TODO: change later when changing this function
   uvmunmap(new, pmd, ignoreSwapping, 0, i / PGSIZE, 1);
   return -1;
 }

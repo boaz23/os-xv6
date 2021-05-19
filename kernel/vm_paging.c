@@ -35,20 +35,6 @@ pmd_set_mpe(struct pagingMetadata *pmd, struct memoryPageEntry *mpe, uint64 va)
 }
 
 struct memoryPageEntry*
-pmd_findSwapPageCandidate(struct pagingMetadata *pmd)
-{
-  // for now, just an algorithm which returns the first valid page
-  struct memoryPageEntry *mpe;
-  FOR_EACH(mpe, pmd->memoryPageEntries) {
-    if (mpe->present && mpe->va) {
-      return mpe;
-    }
-  }
-
-  return 0;
-}
-
-struct memoryPageEntry*
 pmd_findMemoryPageEntryByVa(struct pagingMetadata *pmd, uint64 va)
 {
   struct memoryPageEntry *mpe;
@@ -199,7 +185,7 @@ swapPageOut_core(pagetable_t pagetable, struct file *swapFile, int ignoreSwappin
   if (!pte) {
     panic("page swap out: pte not found");
   }
-  if (*pte & (~PTE_V)) {
+  if (!(*pte & PTE_V)) {
     panic("page swap out: non valid pte");
   }
   if (*pte & PTE_PG) {
@@ -268,7 +254,7 @@ swapPageIn(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, str
   if (*pte & PTE_V) {
     panic("page swap in: valid pte");
   }
-  if (*pte & (~PTE_PG)) {
+  if (!(*pte & PTE_PG)) {
     panic("page swap in: non-paged out pte");
   }
 
@@ -310,4 +296,64 @@ swapPageIn(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, str
   *pte = PA2PTE(pa_dst) | PTE_FLAGS((*pte | PTE_V) & (~PTE_PG));
   return 0;
   #endif
+}
+
+struct memoryPageEntry*
+pmd_findSwapPageCandidate(struct pagingMetadata *pmd)
+{
+  // for now, just an algorithm which returns the first valid page
+  struct memoryPageEntry *mpe;
+  FOR_EACH(mpe, pmd->memoryPageEntries) {
+    if (mpe->present && mpe->va) {
+      return mpe;
+    }
+  }
+
+  return 0;
+}
+
+int
+handlePageFault(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, struct pagingMetadata *pmd, uint64 va)
+{
+  uint64 pgAddr;
+  pte_t *pte;
+  struct swapFileEntry *sfe;
+  struct memoryPageEntry *mpe;
+  if (ignoreSwapping) {
+    return -1;
+  }
+
+  pgAddr = PGROUNDDOWN(va);
+  pte = walk(pagetable, pgAddr, 0);
+  if (!pte) {
+    return -1;
+  }
+  if (*pte & PTE_V) {
+    // how did we end up in a page fault if it's valid?
+    return -1;
+  }
+  if (!(*pte & PTE_PG)) {
+    return -1;
+  }
+  if (!(*pte & PTE_U)) {
+    return -1;
+  }
+
+  sfe = pmd_findSwapFileEntryByVa(pmd, pgAddr);
+  if (!sfe) {
+    return -1;
+  }
+
+  if (pmd->pagesInMemory < MAX_PSYC_PAGES) {
+    mpe = 0;
+  }
+  else {
+    mpe = pmd_findSwapPageCandidate(pmd); 
+  }
+
+  if (swapPageIn(pagetable, swapFile, ignoreSwapping, pmd, sfe, mpe) < 0) {
+    return -1;
+  }
+
+  return 0;
 }

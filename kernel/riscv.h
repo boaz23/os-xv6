@@ -335,6 +335,10 @@ sfence_vma()
 #define PTE_D  (1L << 7) // dirty, was this page written to
 #define PTE_PG (1L << 9) // was this page paged out
 
+#define PGFAULT_INSTRUCTION 12
+#define PGFAULT_LOAD        13
+#define PGFAULT_STORE       15
+
 // shift a physical address to the right place for a PTE.
 #define PA2PTE(pa) ((((uint64)pa) >> 12) << 10)
 

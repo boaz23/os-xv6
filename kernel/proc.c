@@ -318,8 +318,7 @@ fork(void)
       // Thus, we allow such a case to occur temporarily here,
       // and we therefore assume that an exec syscall is to come
       // immediately and the data structures would be initialized there.
-      
-      // TODO: Manually initilize the data sturctures,
+
       // only if the shell has less than or equal to MAX_TOTAL_PAGES number of pages.
       // Take paging scheduler into account,
       // it needs to be called if sz > MAX_PYSC_PAGES*PG_SIZE.
@@ -711,4 +710,13 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+int
+proc_handlePageFault(uint64 va)
+{
+  struct proc *p;
+
+  p = myproc();
+  return handlePageFault(p->pagetable, p->swapFile, p->ignorePageSwapping, &p->pagingMetadata, va);
 }
