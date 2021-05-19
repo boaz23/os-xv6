@@ -197,6 +197,7 @@ void                    pmd_clear_mpe(struct pagingMetadata *pmd, struct memoryP
 void                    pmd_clear_sfe(struct pagingMetadata *pmd, struct swapFileEntry *sfe);
 void                    pmd_set_sfe(struct pagingMetadata *pmd, struct swapFileEntry *sfe, uint64 va);
 void                    pmd_set_mpe(struct pagingMetadata *pmd, struct memoryPageEntry *mpe, uint64 va);
+void                    pmd_printEntries(struct pagingMetadata *pmd, char *fName, int pid);
 struct memoryPageEntry* pmd_findMemoryPageEntryByVa(struct pagingMetadata *pmd, uint64 va);
 struct swapFileEntry*   pmd_findSwapFileEntryByVa(struct pagingMetadata *pmd, uint64 va);
 struct memoryPageEntry* pmd_findFreeMemoryPageEntry(struct pagingMetadata *pmd);

@@ -51,6 +51,25 @@ pmd_set_mpe(struct pagingMetadata *pmd, struct memoryPageEntry *mpe, uint64 va)
   pmd->pagesInMemory++;
 }
 
+void
+pmd_printEntries(struct pagingMetadata *pmd, char *fName, int pid)
+{
+  struct memoryPageEntry *mpe;
+  struct swapFileEntry *sfe;
+  printf("proc %d - %s: pages in mem: %d\n", pid, fName, pmd->pagesInMemory);
+  printf("proc %d - %s: pages in swap file: %d\n", pid, fName, pmd->pagesInDisk);
+  FOR_EACH(mpe, pmd->memoryPageEntries) {
+    if (mpe->present) {
+      printf("proc %d - %s:   mem entry %d#%p\n", pid, fName, INDEX_OF_MPE(pmd, mpe), mpe->va);
+    }
+  }
+  FOR_EACH(sfe, pmd->swapFileEntries) {
+    if (sfe->present) {
+      printf("proc %d - %s:   swap file entry %d#%p\n", pid, fName, INDEX_OF_SFE(pmd, sfe), sfe->va);
+    }
+  }
+}
+
 struct memoryPageEntry*
 pmd_findMemoryPageEntryByVa(struct pagingMetadata *pmd, uint64 va)
 {
@@ -362,6 +381,7 @@ handlePageFault(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping
   if (!(*pte & PTE_PG)) {
     return -1;
   }
+
   // TODO: decide if to remove
   if (!(*pte & PTE_U) && pgAddr >= sz) {
     return -1;

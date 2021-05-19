@@ -151,6 +151,10 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
 
   a = PGROUNDDOWN(va);
   last = PGROUNDDOWN(va + size - 1);
+  if (!(perm & PTE_PG)) {
+    perm |= PTE_V;
+  }
+
   for(;;){
     if((pte = walk(pagetable, a, 1)) == 0)
       return -1;
@@ -162,7 +166,7 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
     if(*pte & (PTE_V | PTE_PG))
     #endif
       panic("remap");
-    *pte = PA2PTE(pa) | PTE_FLAGS(perm | PTE_V);
+    *pte = PA2PTE(pa) | PTE_FLAGS(perm);
     if(a == last)
       break;
     a += PGSIZE;
@@ -250,8 +254,10 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, struct file *swapFile, int ignoreS
 {
   char *mem;
   uint64 a;
+  #ifndef PG_REPLACE_NONE
   int pagesToAllocateCount;
   int totalAllocatedPages;
+  #endif
 
   if(newsz < oldsz)
     return oldsz;

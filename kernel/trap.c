@@ -39,7 +39,9 @@ usertrap(void)
 {
   int which_dev = 0;
   uint64 scause;
+  #ifndef PG_REPLACE_NONE
   uint64 stval;
+  #endif
   int validTrap;
 
   if((r_sstatus() & SSTATUS_SPP) != 0)
@@ -74,6 +76,7 @@ usertrap(void)
     // ok
   } else {
     validTrap = 0;
+    #ifndef PG_REPLACE_NONE
     if (scause == PGFAULT_INSTRUCTION || scause == PGFAULT_LOAD || scause == PGFAULT_STORE) {
       if (scause == PGFAULT_INSTRUCTION) {
         // TODO: remove later after some testing
@@ -84,6 +87,7 @@ usertrap(void)
       stval = r_stval();
       validTrap = proc_handlePageFault(stval) >= 0;
     }
+    #endif
 
     if (!validTrap) {
       printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
