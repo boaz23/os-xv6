@@ -274,7 +274,6 @@ growproc(int n)
     }
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, &p->pagingMetadata, p->ignorePageSwapping, sz, sz + n);
-    // TODO: call the dealloc which also removes mpes
   }
   p->sz = sz;
   return 0;

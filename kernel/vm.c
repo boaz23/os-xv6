@@ -269,7 +269,6 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, struct file *swapFile, int ignoreS
   }
   #endif
 
-  // TODO: call the dealloc which also removes mpes
   oldsz = PGROUNDUP(oldsz);
   for(a = oldsz; a < newsz; a += PGSIZE){
     #ifndef PG_REPLACE_NONE
@@ -297,7 +296,6 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, struct file *swapFile, int ignoreS
 // newsz.  oldsz and newsz need not be page-aligned, nor does newsz
 // need to be less than oldsz.  oldsz can be larger than the actual
 // process size.  Returns the new process size.
-// TODO: split to a function which also removes MPEs.
 uint64
 uvmdealloc(pagetable_t pagetable, struct pagingMetadata *pmd, int ignoreSwapping, uint64 oldsz, uint64 newsz)
 {

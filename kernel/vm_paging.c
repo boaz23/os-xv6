@@ -75,7 +75,7 @@ pmd_findSwapFileEntryByVa(struct pagingMetadata *pmd, uint64 va)
 }
 
 struct memoryPageEntry*
-pmd_findFreememoryPageEntry(struct pagingMetadata *pmd)
+pmd_findFreeMemoryPageEntry(struct pagingMetadata *pmd)
 {
   struct memoryPageEntry *mpe;
   FOR_EACH(mpe, pmd->memoryPageEntries) {
@@ -141,7 +141,7 @@ pmd_insert_va_to_memory_force(struct pagingMetadata *pmd, pagetable_t pagetable,
     }
   }
   else {
-    mpe = pmd_findFreememoryPageEntry(pmd);
+    mpe = pmd_findFreeMemoryPageEntry(pmd);
     if (!mpe) {
       panic("insert mpe: free mpe not found but process has max pages in memory");
     }
@@ -226,7 +226,6 @@ swapPageOut_core(pagetable_t pagetable, struct file *swapFile, int ignoreSwappin
   #endif
 }
 
-// TODO: handle the case the memory is not necessarily full
 int
 swapPageIn(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, struct pagingMetadata *pmd, struct swapFileEntry *sfe, struct memoryPageEntry *mpe)
 {
@@ -252,7 +251,7 @@ swapPageIn(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, str
     panic("page swap in: swap file entry not present");
   }
 
-  if (!mpe) {
+  if (!mpe && pmd->pagesInMemory == MAX_PSYC_PAGES) {
     panic("page swap in: no memory page to swap out");
   }
   if (!(0 <= INDEX_OF_MPE(pmd, mpe) && INDEX_OF_MPE(pmd, mpe) < MAX_PSYC_PAGES)) {
@@ -276,6 +275,7 @@ swapPageIn(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, str
   // We want to swap out a memory page in favor the specified page in the swap file.
   // This is because the memory is full and the page replacement algorithm
   // selected this memory page.
+  // Or maybe the memory is not full and we want to swap it out anyway.
 
   sfe_buffer = kalloc();
   if (!sfe_buffer) {
@@ -290,14 +290,24 @@ swapPageIn(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, str
   va_src = sfe->va;
   pa_dst = (uint64)sfe_buffer;
 
-  if (swapPageOut_core(pagetable, swapFile, ignoreSwapping, pmd, mpe, sfe, 0) < 0) {
-    sfe->present = 1;
-    kfree(sfe_buffer);
-    return -1;
+  if (mpe) {
+    if (swapPageOut_core(pagetable, swapFile, ignoreSwapping, pmd, mpe, sfe, 0) < 0) {
+      sfe->present = 1;
+      kfree(sfe_buffer);
+      return -1;
+    }
+    
+    pmd->pagesInDisk--;
   }
-  
+  else {
+    mpe = pmd_findFreeMemoryPageEntry(pmd);
+    if (!mpe) {
+      kfree(sfe_buffer);
+      return -1;
+    }
+  }
+
   pmd_set_mpe(pmd, mpe, va_src);
-  pmd->pagesInDisk--;
   *pte = PA2PTE(pa_dst) | PTE_FLAGS((*pte | PTE_V) & (~PTE_PG));
   return 0;
   #endif
