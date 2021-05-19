@@ -722,5 +722,5 @@ proc_handlePageFault(uint64 va)
   struct proc *p;
 
   p = myproc();
-  return handlePageFault(p->pagetable, p->swapFile, p->ignorePageSwapping, &p->pagingMetadata, va);
+  return handlePageFault(p->pagetable, p->swapFile, p->ignorePageSwapping, &p->pagingMetadata, p->sz, va);
 }

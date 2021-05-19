@@ -262,7 +262,7 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, struct file *swapFile, int ignoreS
     pagesToAllocateCount = (PGROUNDUP(newsz) - PGROUNDUP(oldsz)) / PGSIZE;
     totalAllocatedPages += pagesToAllocateCount;
     if (totalAllocatedPages > MAX_TOTAL_PAGES) {
-      return -1;
+      return 0;
     }
   }
   #endif

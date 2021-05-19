@@ -335,7 +335,7 @@ pmd_findSwapPageCandidate(struct pagingMetadata *pmd)
 }
 
 int
-handlePageFault(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, struct pagingMetadata *pmd, uint64 va)
+handlePageFault(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, struct pagingMetadata *pmd, uint64 sz, uint64 va)
 {
   uint64 pgAddr;
   pte_t *pte;
@@ -355,6 +355,10 @@ handlePageFault(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping
     return -1;
   }
   if (!(*pte & PTE_PG)) {
+    return -1;
+  }
+  // TODO: decide if to remove
+  if (!(*pte & PTE_U) && pgAddr >= sz) {
     return -1;
   }
 
