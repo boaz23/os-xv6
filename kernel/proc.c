@@ -295,17 +295,17 @@ fork(void)
     return -1;
   }
 
-  if (!ignorePageSwapping && createSwapFile(np) != 0) {
-    freeproc(np);
-    release(&np->lock);
-    return 0;
-  }
-
   np->ignorePageSwapping = ignorePageSwapping;
   np->ignorePageSwapping_parent = p->ignorePageSwapping;
   
   // whether the new process is not initproc or the shell
   if (!ignorePageSwapping) {
+    if (createSwapFile(np) != 0) {
+      freeproc(np);
+      release(&np->lock);
+      return 0;
+    }
+
     if (p->ignorePageSwapping) {
       // A child of the shell.
       // Since the shell can theoretically have unlimited pages in memory,
@@ -327,7 +327,11 @@ fork(void)
     else {
       // the parent is a regular process, we can just copy his
       np->pagingMetadata = p->pagingMetadata;
-      // TODO: copy swapping file content as well
+      if (kfile_inode_copy(p->swapFile, np->swapFile) < 0) {
+        freeproc(np);
+        release(&np->lock);
+        return 0;
+      }
     }
   }
 

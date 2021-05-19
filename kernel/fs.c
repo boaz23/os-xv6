@@ -821,6 +821,33 @@ int
 kfile_read_offset(struct file *swapFile, char* buffer, uint placeOnFile, uint size)
 {
   swapFile->off = placeOnFile;
-  return kfileread(swapFile, (uint64)buffer,  size);
+  return kfileread(swapFile, (uint64)buffer, size);
 }
 
+int
+kfile_inode_copy(struct file *file_src, struct file *file_dest)
+{
+  uint64 buffer;
+
+  if (file_dest->type != FD_INODE) {
+    return -1;
+  }
+
+  buffer = (uint64)kalloc();
+  if (!buffer) {
+    return -1;
+  }
+
+  while (file_dest->off < file_src->ip->size) {
+    if (kfileread(file_src, buffer, PGSIZE) < 0) {
+      kfree((void *)buffer);
+      return -1;
+    }
+    if (kfilewrite(file_dest, buffer, PGSIZE) < 0) {
+      kfree((void *)buffer);
+      return -1;
+    }
+  }
+
+  return 0;
+}
