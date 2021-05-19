@@ -115,8 +115,7 @@ void            procdump(void);
 struct memoryPageEntry* proc_insert_va_to_memory_force(uint64 va);
 int                     proc_remove_va(struct proc *p, uint64 va);
 struct memoryPageEntry* proc_findMemoryPageEntryByVa(struct proc *p, uint64 va);
-// TODO: remove this function
-void                    proc_insert_mpe_at(struct proc *p, int i, uint64 va);
+void                    proc_set_mpe(struct proc *p, struct memoryPageEntry *mpe, uint64 va);
 
 // swtch.S
 void            swtch(struct context*, struct context*);

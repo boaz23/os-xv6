@@ -19,6 +19,7 @@ exec(char *path, char **argv)
   struct inode *ip;
   struct proghdr ph;
   pagetable_t pagetable = 0, oldpagetable;
+  struct memoryPageEntry *mpe;
   int memoryPagesCount;
   int va;
   struct proc *p = myproc();
@@ -125,11 +126,12 @@ exec(char *path, char **argv)
       panic("exec too many pages in memory");
     }
 
+    p->pagesInMemory = 0;
     p->pagesInDisk = 0;
     memset(&p->swapFileEntries, 0, sizeof(p->swapFileEntries));
     memset(&p->memoryPageEntries, 0, sizeof(p->memoryPageEntries));
-    for (va = 0, i = 0; va < sz; va += PGSIZE, i++) {
-      proc_insert_mpe_at(p, i, va);
+    for (va = 0, mpe = p->memoryPageEntries; va < sz; va += PGSIZE, mpe++) {
+      proc_set_mpe(p, mpe, va);
     }
   }
 

@@ -884,12 +884,9 @@ proc_swapPageOut_core(struct memoryPageEntry *mpe, struct swapFileEntry *sfe, ui
   if (writeToSwapFile(p, (char *)pa, SFE_OFFSET(p, sfe), PGSIZE) < 0) {
     return -1;
   }
-
-  // TODO: extract method: clear_mpe, set_sfe
-  sfe->va = mpe->va;
-  sfe->present = 1;
-  mpe->va = 0;
-  mpe->present = 0;
+  
+  proc_set_sfe(p, sfe, mpe->va);
+  proc_clear_mpe(p, mpe);
   *pte = (*pte | PTE_PG) & (~PTE_V);
   if (ppa) {
     // the caller wants the physical address and wants the page in the memoery,
@@ -898,9 +895,7 @@ proc_swapPageOut_core(struct memoryPageEntry *mpe, struct swapFileEntry *sfe, ui
   }
   else {
     kfree((void *)pa);
-    p->pagesInMemory--;
   }
-  p->pagesInDisk++;
   return 0;
   #endif
 }
@@ -988,12 +983,9 @@ proc_swapPageIn(struct swapFileEntry *sfe, struct memoryPageEntry *mpe)
     return -1;
   }
   
-  // TODO: extract method, set mpe
-  mpe->va = va_src;
-  mpe->present = 1;
-  *pte = PA2PTE(pa_dst) | PTE_FLAGS((*pte | PTE_V) & (~PTE_PG));
-  p->pagesInMemory++;
+  proc_set_mpe(p, mpe, va_src);
   p->pagesInDisk--;
+  *pte = PA2PTE(pa_dst) | PTE_FLAGS((*pte | PTE_V) & (~PTE_PG));
   return 0;
   #endif
 }
