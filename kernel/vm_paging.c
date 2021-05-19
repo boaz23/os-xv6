@@ -11,9 +11,11 @@ pmd_init(struct pagingMetadata *pmd)
   pmd->pagesInDisk = 0;
   FOR_EACH(mpe, pmd->memoryPageEntries) {
     mpe->va = -1;
+    mpe->present = 0;
   }
   FOR_EACH(sfe, pmd->swapFileEntries) {
-    mpe->va = -1;
+    sfe->va = -1;
+    sfe->present = 0;
   }
 }
 
@@ -130,6 +132,9 @@ pmd_insert_va_to_memory_force(struct pagingMetadata *pmd, pagetable_t pagetable,
   if (ignoreSwapping) {
     return 0;
   }
+  if (pmd->pagesInMemory > MAX_PSYC_PAGES) {
+    panic("insert mpe: more than max pages in memory");
+  }
   if (pmd->pagesInMemory == MAX_PSYC_PAGES) {
     if (!swapFile) {
       return 0;
@@ -144,7 +149,7 @@ pmd_insert_va_to_memory_force(struct pagingMetadata *pmd, pagetable_t pagetable,
   else {
     mpe = pmd_findFreeMemoryPageEntry(pmd);
     if (!mpe) {
-      panic("insert mpe: free mpe not found but process has max pages in memory");
+      panic("insert mpe: free mpe not found but process does not have max pages in memory");
     }
   }
 
