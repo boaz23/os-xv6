@@ -810,18 +810,18 @@ readFromSwapFile(struct proc * p, char* buffer, uint placeOnFile, uint size)
 }
 
 int
-kfile_write_offset(struct file *swapFile, char* buffer, uint placeOnFile, uint size)
+kfile_write_offset(struct file *file, char* buffer, uint placeOnFile, uint size)
 {
-  swapFile->off = placeOnFile;
-  return kfilewrite(swapFile, (uint64)buffer, size);
+  file->off = placeOnFile;
+  return kfilewrite(file, (uint64)buffer, size);
 }
 
 //return as sys_read (-1 when error)
 int
-kfile_read_offset(struct file *swapFile, char* buffer, uint placeOnFile, uint size)
+kfile_read_offset(struct file *file, char* buffer, uint placeOnFile, uint size)
 {
-  swapFile->off = placeOnFile;
-  return kfileread(swapFile, (uint64)buffer, size);
+  file->off = placeOnFile;
+  return kfileread(file, (uint64)buffer, size);
 }
 
 int
@@ -829,6 +829,9 @@ kfile_inode_copy(struct file *file_src, struct file *file_dest)
 {
   uint64 buffer;
 
+  if (file_src->type != FD_INODE) {
+    return -1;
+  }
   if (file_dest->type != FD_INODE) {
     return -1;
   }
@@ -838,7 +841,7 @@ kfile_inode_copy(struct file *file_src, struct file *file_dest)
     return -1;
   }
 
-  while (file_dest->off < file_src->ip->size) {
+  while (file_dest->ip->size < file_src->ip->size) {
     if (kfileread(file_src, buffer, PGSIZE) < 0) {
       kfree((void *)buffer);
       return -1;
@@ -849,5 +852,6 @@ kfile_inode_copy(struct file *file_src, struct file *file_dest)
     }
   }
 
+  kfree((void *)buffer);
   return 0;
 }

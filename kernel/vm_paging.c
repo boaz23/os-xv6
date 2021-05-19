@@ -136,9 +136,6 @@ pmd_insert_va_to_memory_force(struct pagingMetadata *pmd, pagetable_t pagetable,
     
     mpe = pmd_findSwapPageCandidate(pmd);
     err = swapPageOut(pagetable, swapFile, ignoreSwapping, pmd, mpe, 0);
-    if (err == -2) {
-      panic("insert mpe: process memory exeeded MAX_TOTAL pages");
-    }
     if (err < 0) {
       return 0;
     }
@@ -260,7 +257,7 @@ swapPageIn(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, str
   if (!(0 <= INDEX_OF_MPE(pmd, mpe) && INDEX_OF_MPE(pmd, mpe) < MAX_PSYC_PAGES)) {
     panic("page swap in: mpe index out of range");
   }
-  if (!mpe->present) {
+  if (mpe && !mpe->present) {
     panic("page swap in: memory page not present");
   }
 
@@ -289,22 +286,21 @@ swapPageIn(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, str
     return -1;
   }
 
-  sfe->present = 0;
   va_src = sfe->va;
   pa_dst = (uint64)sfe_buffer;
 
+  pmd_clear_sfe(pmd, sfe);
   if (mpe) {
     if (swapPageOut_core(pagetable, swapFile, ignoreSwapping, pmd, mpe, sfe, 0) < 0) {
-      sfe->present = 1;
+      pmd_set_sfe(pmd, sfe, va_src);
       kfree(sfe_buffer);
       return -1;
     }
-    
-    pmd->pagesInDisk--;
   }
   else {
     mpe = pmd_findFreeMemoryPageEntry(pmd);
     if (!mpe) {
+      pmd_set_sfe(pmd, sfe, va_src);
       kfree(sfe_buffer);
       return -1;
     }

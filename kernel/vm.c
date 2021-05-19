@@ -3,9 +3,7 @@
 #include "memlayout.h"
 #include "elf.h"
 #include "riscv.h"
-#include "spinlock.h"
 #include "vm_paging.h"
-#include "proc.h"
 #include "defs.h"
 #include "fs.h"
 
@@ -201,7 +199,7 @@ uvmunmap(pagetable_t pagetable, struct pagingMetadata *pmd, int ignoreSwapping, 
     if(do_free)
     #else
     // do not free a paged out page (as it was already freed)
-    if(do_free && (*pte & ~PTE_PG))
+    if(do_free && (*pte & (~PTE_PG)))
     #endif
     {
       uint64 pa = PTE2PA(*pte);
@@ -209,7 +207,7 @@ uvmunmap(pagetable_t pagetable, struct pagingMetadata *pmd, int ignoreSwapping, 
     }
     #ifndef PG_REPLACE_NONE
     if (!ignoreSwapping && pmd) {
-      pmd_remove_va(pmd, va);
+      pmd_remove_va(pmd, a);
     }
     #endif
     *pte = 0;
@@ -377,12 +375,6 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz, int ignoreSwapping, struct 
       panic("uvmcopy: page not present");
     }
 
-    #ifndef PG_REPLACE_NONE
-    if (!ignoreSwapping && !pmd_insert_va_to_memory_force(pmd, new, swapFile, ignoreSwapping, i)) {
-      goto err;
-    }
-    #endif
-
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
     #ifndef PG_REPLACE_NONE
@@ -390,8 +382,15 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz, int ignoreSwapping, struct 
     // do memory allocations and copy to that (not allocated) memory
     if (*pte & PTE_PG) {
       mem = 0;
+
+      if (!ignoreSwapping) {
+        panic("uvmcopy: paged out page not implemented (because it's shell fork only)");
+      }
     }
     else {
+      if (!ignoreSwapping && !pmd_insert_va_to_memory_force(pmd, new, swapFile, ignoreSwapping, i)) {
+        goto err;
+      }
     #endif
       if((mem = kalloc()) == 0)
         goto err;

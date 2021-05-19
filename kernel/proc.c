@@ -285,7 +285,6 @@ int
 fork(void)
 {
   int i, pid;
-  int ignorePageSwapping;
   int copyIgnorePagingMetadata;
   struct proc *np;
   struct proc *p = myproc();
