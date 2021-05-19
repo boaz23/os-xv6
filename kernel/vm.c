@@ -353,7 +353,7 @@ uvmfree(pagetable_t pagetable, uint64 sz)
 // returns 0 on success, -1 on failure.
 // frees any allocated pages on failure.
 int
-uvmcopy(pagetable_t old, pagetable_t new, uint64 sz, int ignoreSwapping, struct pagingMetadata *pmd, struct file *swapFile)
+uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 {
   pte_t *pte;
   uint64 pa, i;
@@ -381,16 +381,8 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz, int ignoreSwapping, struct 
     // do memory allocations and copy to that (not allocated) memory
     if (*pte & PTE_PG) {
       mem = 0;
-
-      // TODO: implemented if needed
-      if (!ignoreSwapping) {
-        panic("uvmcopy: paged out page not implemented (because it's shell fork only)");
-      }
     }
     else {
-      if (!ignoreSwapping && !pmd_insert_va_to_memory_force(pmd, new, swapFile, ignoreSwapping, i)) {
-        goto err;
-      }
     #endif
       if((mem = kalloc()) == 0)
         goto err;
@@ -409,7 +401,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz, int ignoreSwapping, struct 
   return 0;
 
  err:
-  uvmunmap(new, pmd, ignoreSwapping, 0, i / PGSIZE, 1);
+  uvmunmap(new, 0, 1, 0, i / PGSIZE, 1);
   return -1;
 }
 

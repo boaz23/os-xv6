@@ -138,7 +138,7 @@ found:
 
   p->ignorePageSwapping = 0;
   p->ignorePageSwapping_parent = 0;
-  memset(&p->pagingMetadata, 0, sizeof(p->pagingMetadata));
+  pmd_init(&p->pagingMetadata);
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
@@ -155,10 +155,6 @@ found:
 static void
 freeproc(struct proc *p)
 {
-  if(p->swapFile != 0){
-    removeSwapFile(p);
-    p->swapFile = 0;
-  }
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
@@ -172,6 +168,7 @@ freeproc(struct proc *p)
   p->chan = 0;
   p->killed = 0;
   p->xstate = 0;
+  p->swapFile = 0;
   p->state = UNUSED;
 }
 
@@ -285,7 +282,7 @@ int
 fork(void)
 {
   int i, pid;
-  int copyIgnorePagingMetadata;
+  uint64 va;
   struct proc *np;
   struct proc *p = myproc();
 
@@ -296,49 +293,9 @@ fork(void)
 
   np->ignorePageSwapping = p == initproc;
   np->ignorePageSwapping_parent = p->ignorePageSwapping;
-  
-  copyIgnorePagingMetadata = 1;
-  // whether the new process is not initproc or the shell
-  if (!np->ignorePageSwapping) {
-    if (createSwapFile(np) != 0) {
-      freeproc(np);
-      release(&np->lock);
-      return 0;
-    }
-
-    if (p->ignorePageSwapping) {
-      // A child of the shell.
-      // Since the shell can theoretically have unlimited pages in memory,
-      // and therefore more than MAX_TOTAL_PAGES,
-      // if the shell forks with such amount of pages,
-      // the fork cannot manually initialize the data structures as it
-      // would violate the restriction that all process (except for the shell and init)
-      // must have less than 32 pages.
-
-      // Thus, we allow such a case to occur temporarily here,
-      // and we therefore assume that an exec syscall is to come
-      // immediately and the data structures would be initialized there.
-
-      // only if the shell has less than or equal to MAX_TOTAL_PAGES number of pages.
-      // Take paging scheduler into account,
-      // it needs to be called if sz > MAX_PYSC_PAGES*PG_SIZE.
-      if (p->sz / PGSIZE < MAX_TOTAL_PAGES) {
-        copyIgnorePagingMetadata = 0;
-      }
-    }
-    else {
-      // the parent is a regular process, we can just copy his
-      np->pagingMetadata = p->pagingMetadata;
-      if (kfile_inode_copy(p->swapFile, np->swapFile) < 0) {
-        freeproc(np);
-        release(&np->lock);
-        return 0;
-      }
-    }
-  }
 
   // Copy user memory from parent to child.
-  if(uvmcopy(p->pagetable, np->pagetable, p->sz, copyIgnorePagingMetadata, &np->pagingMetadata, np->swapFile) < 0){
+  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
     freeproc(np);
     release(&np->lock);
     return -1;
@@ -363,6 +320,48 @@ fork(void)
   pid = np->pid;
 
   release(&np->lock);
+
+  // whether the new process is not initproc or the shell
+  if (!np->ignorePageSwapping) {
+    if (createSwapFile(np) != 0) {
+      freeproc(np);
+      return 0;
+    }
+
+    if (p->ignorePageSwapping) {
+      // A child of the shell.
+      // Since the shell can theoretically have unlimited pages in memory,
+      // and therefore more than MAX_TOTAL_PAGES,
+      // if the shell forks with such amount of pages,
+      // the fork cannot manually initialize the data structures as it
+      // would violate the restriction that all process (except for the shell and init)
+      // must have less than 32 pages.
+
+      // Thus, we allow such a case to occur temporarily here,
+      // and we therefore assume that an exec syscall is to come
+      // immediately and the data structures would be initialized there.
+
+      // only if the shell has less than or equal to MAX_TOTAL_PAGES number of pages.
+      // Take paging scheduler into account,
+      // it needs to be called if sz > MAX_PYSC_PAGES*PG_SIZE.
+      if (PGROUNDUP(p->sz) / PGSIZE < MAX_TOTAL_PAGES) {
+        for(va = 0; va < p->sz; va += PGSIZE) {
+          if (pmd_insert_va_to_memory_force(&np->pagingMetadata, np->pagetable, np->swapFile, 0, va) < 0) {
+            freeproc(np);
+            return 0;
+          }
+        }
+      }
+    }
+    else {
+      // the parent is a regular process, we can just copy his
+      np->pagingMetadata = p->pagingMetadata;
+      if (kfile_inode_copy(p->swapFile, np->swapFile) < 0) {
+        freeproc(np);
+        return 0;
+      }
+    }
+  }
 
   acquire(&wait_lock);
   np->parent = p;
@@ -408,6 +407,11 @@ exit(int status)
       fileclose(f);
       p->ofile[fd] = 0;
     }
+  }
+
+  if(p->swapFile != 0){
+    removeSwapFile(p);
+    p->swapFile = 0;
   }
 
   begin_op();

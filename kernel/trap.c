@@ -77,7 +77,8 @@ usertrap(void)
     if (scause == PGFAULT_INSTRUCTION || scause == PGFAULT_LOAD || scause == PGFAULT_STORE) {
       if (scause == PGFAULT_INSTRUCTION) {
         // TODO: remove later after some testing
-        panic("trap: page fault instruction");
+        // printf("proc %d, instruction page fault va %p\n", myproc()->pid, r_stval());
+        // panic("trap: page fault instruction");
       }
 
       stval = r_stval();

@@ -181,7 +181,7 @@ pagetable_t     uvmcreate(void);
 void            uvminit(pagetable_t, uchar *, uint);
 uint64          uvmalloc(pagetable_t pagetable, uint64 oldsz, struct file *swapFile, int ignoreSwapping, struct pagingMetadata *pmd, uint64 newsz);
 uint64          uvmdealloc(pagetable_t pagetable, struct pagingMetadata *pmd, int ignoreSwapping, uint64 oldsz, uint64 newsz);
-int             uvmcopy(pagetable_t old, pagetable_t new, uint64 sz, int ignoreSwapping, struct pagingMetadata *pmd, struct file *swapFile);
+int             uvmcopy(pagetable_t, pagetable_t, uint64);
 void            uvmfree(pagetable_t, uint64);
 void            uvmunmap(pagetable_t pagetable, struct pagingMetadata *pmd, int ignoreSwapping, uint64 va, uint64 npages, int do_free);
 void            uvmclear(pagetable_t, uint64);
@@ -192,6 +192,7 @@ int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
 
 // vm_paging.c
+void                    pmd_init(struct pagingMetadata *pmd);
 void                    pmd_clear_mpe(struct pagingMetadata *pmd, struct memoryPageEntry *mpe);
 void                    pmd_clear_sfe(struct pagingMetadata *pmd, struct swapFileEntry *sfe);
 void                    pmd_set_sfe(struct pagingMetadata *pmd, struct swapFileEntry *sfe, uint64 va);

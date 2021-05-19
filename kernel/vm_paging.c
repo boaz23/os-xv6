@@ -3,6 +3,21 @@
 #include "defs.h"
 
 void
+pmd_init(struct pagingMetadata *pmd)
+{
+  struct memoryPageEntry *mpe;
+  struct swapFileEntry *sfe;
+  pmd->pagesInMemory = 0;
+  pmd->pagesInDisk = 0;
+  FOR_EACH(mpe, pmd->memoryPageEntries) {
+    mpe->va = -1;
+  }
+  FOR_EACH(sfe, pmd->swapFileEntries) {
+    mpe->va = -1;
+  }
+}
+
+void
 pmd_clear_mpe(struct pagingMetadata *pmd, struct memoryPageEntry *mpe)
 {
   mpe->va = -1;
@@ -303,13 +318,20 @@ pmd_findSwapPageCandidate(struct pagingMetadata *pmd)
 {
   // for now, just an algorithm which returns the first valid page
   struct memoryPageEntry *mpe;
-  FOR_EACH(mpe, pmd->memoryPageEntries) {
-    if (mpe->present && mpe->va) {
-      return mpe;
+  struct memoryPageEntry *mpe_0 = 0;
+  for (mpe = &pmd->memoryPageEntries[MAX_PSYC_PAGES - 1]; mpe >= pmd->memoryPageEntries; mpe--) {
+  // FOR_EACH(mpe, pmd->memoryPageEntries) {
+    if (mpe->present) {
+      if (mpe->va == 0) {
+        mpe_0 = mpe;
+      }
+      else {
+        return mpe;
+      }
     }
   }
 
-  return 0;
+  return mpe_0;
 }
 
 int
@@ -333,9 +355,6 @@ handlePageFault(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping
     return -1;
   }
   if (!(*pte & PTE_PG)) {
-    return -1;
-  }
-  if (!(*pte & PTE_U)) {
     return -1;
   }
 

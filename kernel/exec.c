@@ -42,7 +42,7 @@ exec(char *path, char **argv)
     goto bad;
 
   // Load program into memory.
-  memset(&pmd, 0, sizeof(pmd));
+  pmd_init(&p->pagingMetadata);
   for(i=0, off=elf.phoff; i<elf.phnum; i++, off+=sizeof(ph)){
     if(readi(ip, 0, (uint64)&ph, off, sizeof(ph)) != sizeof(ph))
       goto bad;
@@ -75,12 +75,13 @@ exec(char *path, char **argv)
   if((sz1 = uvmalloc(pagetable, sz, 0, p->ignorePageSwapping, &pmd, sz + 2*PGSIZE)) == 0)
     goto bad;
 
+  sz = sz1;
+
   memoryPagesCount = (sz / PGSIZE);
   if (memoryPagesCount > MAX_PSYC_PAGES) {
     goto bad;
   }
 
-  sz = sz1;
   uvmclear(pagetable, sz-2*PGSIZE);
   sp = sz;
   stackbase = sp - PGSIZE;
