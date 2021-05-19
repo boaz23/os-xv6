@@ -19,6 +19,8 @@
         "spinlock.h": "c",
         "date.h": "c",
         "defs.h": "c",
+        "vm_types.h": "c",
+        "vm_paging.h": "c"
     },
     "files.exclude": {
         "mkfs/mkfs": true,

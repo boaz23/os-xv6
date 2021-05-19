@@ -3,6 +3,7 @@
 #include "defs.h"
 #include "param.h"
 #include "spinlock.h"
+#include "vm_paging.h"
 #include "proc.h"
 #include "fs.h"
 #include "sleeplock.h"

@@ -15,6 +15,7 @@
 #include "param.h"
 #include "stat.h"
 #include "spinlock.h"
+#include "vm_paging.h"
 #include "proc.h"
 #include "sleeplock.h"
 #include "fs.h"
@@ -807,3 +808,19 @@ readFromSwapFile(struct proc * p, char* buffer, uint placeOnFile, uint size)
   p->swapFile->off = placeOnFile;
   return kfileread(p->swapFile, (uint64)buffer,  size);
 }
+
+int
+kfile_write_offset(struct file *swapFile, char* buffer, uint placeOnFile, uint size)
+{
+  swapFile->off = placeOnFile;
+  return kfilewrite(swapFile, (uint64)buffer, size);
+}
+
+//return as sys_read (-1 when error)
+int
+kfile_read_offset(struct file *swapFile, char* buffer, uint placeOnFile, uint size)
+{
+  swapFile->off = placeOnFile;
+  return kfileread(swapFile, (uint64)buffer,  size);
+}
+

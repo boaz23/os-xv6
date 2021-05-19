@@ -4,6 +4,7 @@
 #include "elf.h"
 #include "riscv.h"
 #include "spinlock.h"
+#include "vm_paging.h"
 #include "proc.h"
 #include "defs.h"
 #include "fs.h"
@@ -176,54 +177,13 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
 // page-aligned. The mappings must exist.
 // Optionally free the physical memory.
 void
-uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
+uvmunmap(pagetable_t pagetable, struct pagingMetadata *pmd, int ignoreSwapping, uint64 va, uint64 npages, int do_free)
 {
   uint64 a;
   pte_t *pte;
 
   if((va % PGSIZE) != 0)
     panic("uvmunmap: not aligned");
-
-  // TODO: extract method
-  for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
-    if((pte = walk(pagetable, a, 0)) == 0)
-      panic("uvmunmap: walk");
-    #ifdef PG_REPLACE_NONE
-    if((*pte & PTE_V) == 0)
-    #else
-    // a page can also be be paged out (and therefore still mapped)
-    if((*pte & (PTE_V | PTE_PG)) == 0)
-    #endif
-      panic("uvmunmap: not mapped");
-    if(PTE_FLAGS(*pte) == PTE_V)
-      panic("uvmunmap: not a leaf");
-    #ifdef PG_REPLACE_NONE
-    if(do_free)
-    #else
-    // do not free a paged out page (as it was already freed)
-    if(do_free && (*pte & ~PTE_PG))
-    #endif
-    {
-      uint64 pa = PTE2PA(*pte);
-      kfree((void*)pa);
-    }
-    *pte = 0;
-  }
-}
-
-void
-uvmunmap_withSwapping(uint64 va, uint64 npages, int do_free)
-{
-  uint64 a;
-  pte_t *pte;
-  pagetable_t pagetable;
-  struct proc *p;
-
-  if((va % PGSIZE) != 0)
-    panic("uvmunmap: not aligned");
-
-  p = myproc();
-  pagetable = p->pagetable;
 
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
     if((pte = walk(pagetable, a, 0)) == 0)
@@ -247,7 +207,11 @@ uvmunmap_withSwapping(uint64 va, uint64 npages, int do_free)
       uint64 pa = PTE2PA(*pte);
       kfree((void*)pa);
     }
-    proc_remove_va(p, va);
+    #ifndef PG_REPLACE_NONE
+    if (!ignoreSwapping && pmd) {
+      pmd_remove_va(pmd, va);
+    }
+    #endif
     *pte = 0;
   }
 }
@@ -284,75 +248,45 @@ uvminit(pagetable_t pagetable, uchar *src, uint sz)
 // Allocate PTEs and physical memory to grow process from oldsz to
 // newsz, which need not be page aligned.  Returns new size or 0 on error.
 uint64
-uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
+uvmalloc(pagetable_t pagetable, uint64 oldsz, struct file *swapFile, int ignoreSwapping, struct pagingMetadata *pmd, uint64 newsz)
 {
   char *mem;
   uint64 a;
-
-  if(newsz < oldsz)
-    return oldsz;
-
-  oldsz = PGROUNDUP(oldsz);
-  for(a = oldsz; a < newsz; a += PGSIZE){
-    mem = kalloc();
-    if(mem == 0){
-      uvmdealloc(pagetable, a, oldsz);
-      return 0;
-    }
-    memset(mem, 0, PGSIZE);
-    if(mappages(pagetable, a, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
-      kfree(mem);
-      uvmdealloc(pagetable, a, oldsz);
-      return 0;
-    }
-  }
-  return newsz;
-}
-
-uint64
-uvmalloc_withSwapping(uint64 newsz)
-{
-  char *mem;
-  uint64 a;
-  uint64 oldsz;
   int pagesToAllocateCount;
   int totalAllocatedPages;
-  pagetable_t pagetable;
-  struct proc *p;
-
-  p = myproc();
-  oldsz = p->sz;
-  pagetable = p->pagetable;
 
   if(newsz < oldsz)
     return oldsz;
-    
-  totalAllocatedPages = p->pagesInMemory + p->pagesInDisk;
-  pagesToAllocateCount = (PGROUNDUP(newsz) - PGROUNDUP(oldsz)) / PGSIZE;
-  totalAllocatedPages += pagesToAllocateCount;
-  if (totalAllocatedPages > MAX_TOTAL_PAGES) {
-    return -1;
+  
+  #ifndef PG_REPLACE_NONE
+  if (!ignoreSwapping) {
+    totalAllocatedPages = pmd->pagesInMemory + pmd->pagesInDisk;
+    pagesToAllocateCount = (PGROUNDUP(newsz) - PGROUNDUP(oldsz)) / PGSIZE;
+    totalAllocatedPages += pagesToAllocateCount;
+    if (totalAllocatedPages > MAX_TOTAL_PAGES) {
+      return -1;
+    }
   }
+  #endif
 
   // TODO: call the dealloc which also removes mpes
   oldsz = PGROUNDUP(oldsz);
   for(a = oldsz; a < newsz; a += PGSIZE){
     #ifndef PG_REPLACE_NONE
-    if (!p->ignorePageSwapping && !proc_insert_va_to_memory_force(a)) {
-      uvmdealloc(pagetable, a, oldsz);
+    if (!ignoreSwapping && !pmd_insert_va_to_memory_force(pmd, pagetable, swapFile, ignoreSwapping, a)) {
+      uvmdealloc(pagetable, pmd, ignoreSwapping, a, oldsz);
       return 0;
     }
     #endif
-    // TODO: extract method
     mem = kalloc();
     if(mem == 0){
-      uvmdealloc(pagetable, a, oldsz);
+      uvmdealloc(pagetable, pmd, ignoreSwapping, a, oldsz);
       return 0;
     }
     memset(mem, 0, PGSIZE);
     if(mappages(pagetable, a, PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
       kfree(mem);
-      uvmdealloc(pagetable, a, oldsz);
+      uvmdealloc(pagetable, pmd, ignoreSwapping, a, oldsz);
       return 0;
     }
   }
@@ -365,14 +299,14 @@ uvmalloc_withSwapping(uint64 newsz)
 // process size.  Returns the new process size.
 // TODO: split to a function which also removes MPEs.
 uint64
-uvmdealloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
+uvmdealloc(pagetable_t pagetable, struct pagingMetadata *pmd, int ignoreSwapping, uint64 oldsz, uint64 newsz)
 {
   if(newsz >= oldsz)
     return oldsz;
 
   if(PGROUNDUP(newsz) < PGROUNDUP(oldsz)){
     int npages = (PGROUNDUP(oldsz) - PGROUNDUP(newsz)) / PGSIZE;
-    uvmunmap(pagetable, PGROUNDUP(newsz), npages, 1);
+    uvmunmap(pagetable, pmd, ignoreSwapping, PGROUNDUP(newsz), npages, 1);
   }
 
   return newsz;
@@ -412,7 +346,7 @@ void
 uvmfree(pagetable_t pagetable, uint64 sz)
 {
   if(sz > 0)
-    uvmunmap(pagetable, 0, PGROUNDUP(sz)/PGSIZE, 1);
+    uvmunmap(pagetable, 0, 1, 0, PGROUNDUP(sz)/PGSIZE, 1);
   freewalk(pagetable);
 }
 
@@ -430,6 +364,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   uint flags;
   char *mem;
 
+ // TODO: change later
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
       panic("uvmcopy: pte should exist");
@@ -470,7 +405,8 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   return 0;
 
  err:
-  uvmunmap(new, 0, i / PGSIZE, 1);
+ // TODO: change later when changing this function
+  uvmunmap(new, 0, 1, 0, i / PGSIZE, 1);
   return -1;
 }
 

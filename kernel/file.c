@@ -11,6 +11,7 @@
 #include "sleeplock.h"
 #include "file.h"
 #include "stat.h"
+#include "vm_paging.h"
 #include "proc.h"
 
 struct devsw devsw[NDEV];

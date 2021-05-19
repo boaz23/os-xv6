@@ -82,18 +82,6 @@ struct trapframe {
 
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
-#define INDEX_OF_MPE(p, mpe) INDEX_OF(mpe, (p)->memoryPageEntries)
-#define INDEX_OF_SFE(p, sfe) INDEX_OF(sfe, (p)->swapFileEntries)
-#define SFE_OFFSET(p, sfe) (INDEX_OF_SFE(p, sfe)*PGSIZE)
-struct swapFileEntry {
-  uint64 va;
-  int present;
-};
-struct memoryPageEntry {
-  uint64 va;
-  int present;
-};
-
 // Per-process state
 struct proc {
   struct spinlock lock;
@@ -122,8 +110,5 @@ struct proc {
 
   int ignorePageSwapping;
   int ignorePageSwapping_parent;
-  int pagesInMemory;
-  int pagesInDisk;
-  struct memoryPageEntry memoryPageEntries[MAX_PSYC_PAGES];
-  struct swapFileEntry swapFileEntries[MAX_PGOUT_PAGES];
+  struct pagingMetadata pagingMetadata;
 };

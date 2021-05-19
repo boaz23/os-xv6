@@ -3,6 +3,7 @@
 #include "memlayout.h"
 #include "riscv.h"
 #include "spinlock.h"
+#include "vm_paging.h"
 #include "proc.h"
 #include "defs.h"
 
@@ -17,9 +18,6 @@ struct spinlock pid_lock;
 
 extern void forkret(void);
 static void freeproc(struct proc *p);
-
-void proc_set_mpe(struct proc *p, struct memoryPageEntry *mpe, uint64 va);
-void proc_insert_mpe_at(struct proc *p, int i, uint64 va);
 
 extern char trampoline[]; // trampoline.S
 
@@ -138,6 +136,8 @@ found:
     return 0;
   }
 
+  memset(&p->pagingMetadata, 0, sizeof(p->pagingMetadata));
+
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
@@ -200,7 +200,7 @@ proc_pagetable(struct proc *p)
   // map the trapframe just below TRAMPOLINE, for trampoline.S.
   if(mappages(pagetable, TRAPFRAME, PGSIZE,
               (uint64)(p->trapframe), PTE_R | PTE_W) < 0){
-    uvmunmap(pagetable, TRAMPOLINE, 1, 0);
+    uvmunmap(pagetable, 0, 1, TRAMPOLINE, 1, 0);
     uvmfree(pagetable, 0);
     return 0;
   }
@@ -213,8 +213,8 @@ proc_pagetable(struct proc *p)
 void
 proc_freepagetable(pagetable_t pagetable, uint64 sz)
 {
-  uvmunmap(pagetable, TRAMPOLINE, 1, 0);
-  uvmunmap(pagetable, TRAPFRAME, 1, 0);
+  uvmunmap(pagetable, 0, 1, TRAMPOLINE, 1, 0);
+  uvmunmap(pagetable, 0, 1, TRAPFRAME, 1, 0);
   uvmfree(pagetable, sz);
 }
 
@@ -269,11 +269,11 @@ growproc(int n)
   sz = p->sz;
 
   if(n > 0){
-    if((sz = uvmalloc_withSwapping(n)) == 0) {
+    if((sz = uvmalloc(p->pagetable, sz, p->swapFile, p->ignorePageSwapping, &p->pagingMetadata, sz + n)) == 0) {
       return -1;
     }
   } else if(n < 0){
-    sz = uvmdealloc(p->pagetable, sz, sz + n);
+    sz = uvmdealloc(p->pagetable, &p->pagingMetadata, p->ignorePageSwapping, sz, sz + n);
     // TODO: call the dealloc which also removes mpes
   }
   p->sz = sz;
@@ -304,15 +304,6 @@ fork(void)
 
   np->ignorePageSwapping = ignorePageSwapping;
   np->ignorePageSwapping_parent = p->ignorePageSwapping;
-
-  // Copy user memory from parent to child.
-  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
-    freeproc(np);
-    release(&np->lock);
-    return -1;
-  }
-
-  np->sz = p->sz;
   
   // whether the new process is not initproc or the shell
   if (!ignorePageSwapping) {
@@ -336,13 +327,19 @@ fork(void)
     }
     else {
       // the parent is a regular process, we can just copy his
-      np->pagesInMemory = p->pagesInMemory;
-      np->pagesInDisk = p->pagesInDisk;
-      memmove(&np->memoryPageEntries, &p->memoryPageEntries, sizeof(np->memoryPageEntries));
-      memmove(&np->swapFileEntries, &p->swapFileEntries, sizeof(np->swapFileEntries));
+      np->pagingMetadata = p->pagingMetadata;
       // TODO: copy swapping file content as well
     }
   }
+
+  // Copy user memory from parent to child.
+  if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
+    freeproc(np);
+    release(&np->lock);
+    return -1;
+  }
+
+  np->sz = p->sz;
 
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
@@ -708,311 +705,4 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
-}
-
-void
-proc_clear_mpe(struct proc *p, struct memoryPageEntry *mpe)
-{
-  mpe->va = -1;
-  mpe->present = 0;
-  p->pagesInMemory--;
-}
-
-void
-proc_clear_sfe(struct proc *p, struct swapFileEntry *sfe)
-{
-  sfe->va = -1;
-  sfe->present = 0;
-  p->pagesInDisk--;
-}
-
-void
-proc_set_sfe(struct proc *p, struct swapFileEntry *sfe, uint64 va)
-{
-  sfe->va = va;
-  sfe->present = 1;
-  p->pagesInDisk++;
-}
-
-void
-proc_set_mpe(struct proc *p, struct memoryPageEntry *mpe, uint64 va)
-{
-  mpe->va = va;
-  mpe->present = 1;
-  p->pagesInMemory++;
-}
-
-void
-proc_insert_mpe_at(struct proc *p, int i, uint64 va)
-{
-  proc_set_mpe(p, &p->memoryPageEntries[i], va);
-}
-
-struct memoryPageEntry*
-findSwapPageCandidate(struct proc *p)
-{
-  // for now, just an algorithm which returns the first valid page
-  struct memoryPageEntry *mpe;
-  FOR_EACH(mpe, p->memoryPageEntries) {
-    if (mpe->present && mpe->va) {
-      return mpe;
-    }
-  }
-
-  return 0;
-}
-
-struct memoryPageEntry*
-proc_findMemoryPageEntryByVa(struct proc *p, uint64 va)
-{
-  struct memoryPageEntry *mpe;
-  FOR_EACH(mpe, p->memoryPageEntries) {
-    if (mpe->present && mpe->va == va) {
-      return mpe;
-    }
-  }
-
-  return 0;
-}
-
-struct swapFileEntry*
-proc_findSwapFileEntryByVa(struct proc *p, uint64 va)
-{
-  struct swapFileEntry *sfe;
-  FOR_EACH(sfe, p->swapFileEntries) {
-    if (sfe->present && sfe->va == va) {
-      return sfe;
-    }
-  }
-
-  return 0;
-}
-
-int
-proc_remove_va(struct proc *p, uint64 va)
-{
-  struct swapFileEntry *sfe;
-  struct memoryPageEntry *mpe;
-
-  mpe = proc_findMemoryPageEntryByVa(p, va);
-  if (mpe) {
-    proc_clear_mpe(p, mpe);
-    return 0;
-  }
-
-  sfe = proc_findSwapFileEntryByVa(p, va);
-  if (sfe) {
-    proc_clear_sfe(p, sfe);
-    return 0;
-  }
-
-  return -1;
-}
-
-struct memoryPageEntry*
-proc_findFreememoryPageEntry(struct proc *p)
-{
-  struct memoryPageEntry *mpe;
-  FOR_EACH(mpe, p->memoryPageEntries) {
-    if (!mpe->present) {
-      return mpe;
-    }
-  }
-
-  return 0;
-}
-
-struct swapFileEntry*
-proc_findFreeSwapFileEntry(struct proc *p)
-{
-  struct swapFileEntry *sfe;
-  FOR_EACH(sfe, p->swapFileEntries) {
-    if (!sfe->present) {
-      return sfe;
-    }
-  }
-
-  return 0;
-}
-
-int
-proc_swapPageOut_core(struct memoryPageEntry *mpe, struct swapFileEntry *sfe, uint64 *ppa)
-{
-  #ifdef PG_REPLACE_NONE
-  panic("page swap out: no page replacement");
-  #else
-  uint64 pa;
-  pte_t *pte;
-  struct proc *p = myproc();
-
-  if (p->ignorePageSwapping) {
-    panic("page swap out: ignored process");
-  }
-
-  if (!mpe) {
-    panic("page swap out: null mpe");
-  }
-  if (!(0 <= INDEX_OF_MPE(p, mpe) && INDEX_OF_MPE(p, mpe) < MAX_PSYC_PAGES)) {
-    panic("page swap out: index out of range");
-  }
-  if (!mpe->present) {
-    panic("page swap out: page not present");
-  }
-
-  if (!sfe) {
-    panic("page swap out: no swap file entry selected");
-  }
-  if (!(0 <= INDEX_OF_SFE(p, sfe) && INDEX_OF_SFE(p, sfe) < MAX_PGOUT_PAGES)) {
-    panic("page swap out: sfe index out of range");
-  }
-  if (sfe->present) {
-    panic("page swap out: swap file entry is present");
-  }
-
-  pte = walk(p->pagetable, mpe->va, 0);
-  if (!pte) {
-    panic("page swap out: pte not found");
-  }
-  if (*pte & (~PTE_V)) {
-    panic("page swap out: non valid pte");
-  }
-  if (*pte & PTE_PG) {
-    panic("page swap out: paged out pte");
-  }
-
-  pa = PTE2PA(*pte);
-  if (writeToSwapFile(p, (char *)pa, SFE_OFFSET(p, sfe), PGSIZE) < 0) {
-    return -1;
-  }
-  
-  proc_set_sfe(p, sfe, mpe->va);
-  proc_clear_mpe(p, mpe);
-  *pte = (*pte | PTE_PG) & (~PTE_V);
-  if (ppa) {
-    // the caller wants the physical address and wants the page in the memoery,
-    // do not free
-    *ppa = pa;
-  }
-  else {
-    kfree((void *)pa);
-  }
-  return 0;
-  #endif
-}
-
-int
-proc_swapPageOut(struct memoryPageEntry *mpe, uint64 *ppa)
-{
-  struct proc *p = myproc();
-  struct swapFileEntry *sfe = proc_findFreeSwapFileEntry(p);
-  if (!sfe) {
-    return -2;
-  }
-
-  return proc_swapPageOut_core(mpe, sfe, ppa);
-}
-
-// TODO: handle the case the memory is not necessarily full
-int
-proc_swapPageIn(struct swapFileEntry *sfe, struct memoryPageEntry *mpe)
-{
-  #ifdef PG_REPLACE_NONE
-  panic("page swap in: no page replacement");
-  #else
-  pte_t *pte;
-  uint64 pa_dst;
-  uint64 va_src;
-  void *sfe_buffer;
-  struct proc *p = myproc();
-
-  if (p->ignorePageSwapping) {
-    panic("page swap in: ignored process");
-  }
-
-  if (!sfe) {
-    panic("page swap in: no swap file entry to swap in");
-  }
-  if (!(0 <= INDEX_OF_SFE(p, sfe) && INDEX_OF_SFE(p, sfe) < MAX_PGOUT_PAGES)) {
-    panic("page swap in: sfe index out of range");
-  }
-  if (!sfe->present) {
-    panic("page swap in: swap file entry not present");
-  }
-
-  if (!mpe) {
-    panic("page swap in: no memory page to swap out");
-  }
-  if (!(0 <= INDEX_OF_MPE(p, mpe) && INDEX_OF_MPE(p, mpe) < MAX_PSYC_PAGES)) {
-    panic("page swap in: mpe index out of range");
-  }
-  if (!mpe->present) {
-    panic("page swap in: memory page not present");
-  }
-
-  pte = walk(p->pagetable, sfe->va, 0);
-  if (!pte) {
-    panic("page swap in: pte not found");
-  }
-  if (*pte & PTE_V) {
-    panic("page swap in: valid pte");
-  }
-  if (*pte & (~PTE_PG)) {
-    panic("page swap in: non-paged out pte");
-  }
-
-  // We want to swap out a memory page in favor the specified page in the swap file.
-  // This is because the memory is full and the page replacement algorithm
-  // selected this memory page.
-
-  sfe_buffer = kalloc();
-  if (!sfe_buffer) {
-    return -1;
-  }
-  if (readFromSwapFile(p, (char *)sfe_buffer, SFE_OFFSET(p, sfe), PGSIZE) < 0) {
-    kfree(sfe_buffer);
-    return -1;
-  }
-
-  sfe->present = 0;
-  va_src = sfe->va;
-  pa_dst = (uint64)sfe_buffer;
-
-  if (proc_swapPageOut_core(mpe, sfe, 0) < 0) {
-    sfe->present = 1;
-    kfree(sfe_buffer);
-    return -1;
-  }
-  
-  proc_set_mpe(p, mpe, va_src);
-  p->pagesInDisk--;
-  *pte = PA2PTE(pa_dst) | PTE_FLAGS((*pte | PTE_V) & (~PTE_PG));
-  return 0;
-  #endif
-}
-
-struct memoryPageEntry*
-proc_insert_va_to_memory_force(uint64 va)
-{
-  int err;
-  struct memoryPageEntry *mpe;
-  struct proc *p = myproc();
-  if (p->pagesInMemory == MAX_PSYC_PAGES) {
-    mpe = findSwapPageCandidate(p);
-    err = proc_swapPageOut(mpe, 0);
-    if (err == -2) {
-      panic("insert mpe: process memory exeeded MAX_TOTAL pages");
-    }
-    if (err < 0) {
-      return 0;
-    }
-  }
-  else {
-    mpe = proc_findFreememoryPageEntry(p);
-    if (!mpe) {
-      panic("insert mpe: free mpe not found but process has max pages in memory");
-    }
-  }
-
-  proc_set_mpe(p, mpe, va);
-  return mpe;
 }

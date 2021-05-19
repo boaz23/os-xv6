@@ -3,6 +3,7 @@
 #include "memlayout.h"
 #include "riscv.h"
 #include "spinlock.h"
+#include "vm_paging.h"
 #include "proc.h"
 #include "syscall.h"
 #include "defs.h"

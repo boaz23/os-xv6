@@ -5,6 +5,7 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "riscv.h"
+#include "vm_paging.h"
 #include "proc.h"
 #include "defs.h"
 

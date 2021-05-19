@@ -8,6 +8,9 @@ struct spinlock;
 struct sleeplock;
 struct stat;
 struct superblock;
+struct swapFileEntry;
+struct memoryPageEntry;
+struct pagingMetadata;
 
 // bio.c
 void            binit(void);
@@ -55,10 +58,13 @@ int             readi(struct inode*, int, uint64, uint, uint);
 void            stati(struct inode*, struct stat*);
 int             writei(struct inode*, int, uint64, uint, uint);
 void            itrunc(struct inode*);
+
 int             createSwapFile(struct proc* p);
 int             readFromSwapFile(struct proc * p, char* buffer, uint placeOnFile, uint size);
 int             writeToSwapFile(struct proc* p, char* buffer, uint placeOnFile, uint size);
 int             removeSwapFile(struct proc* p);
+int             kfile_write_offset(struct file *swapFile, char* buffer, uint placeOnFile, uint size);
+int             kfile_read_offset(struct file *swapFile, char* buffer, uint placeOnFile, uint size);
 
 // ramdisk.c
 void            ramdiskinit(void);
@@ -111,11 +117,6 @@ void            yield(void);
 int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
-
-struct memoryPageEntry* proc_insert_va_to_memory_force(uint64 va);
-int                     proc_remove_va(struct proc *p, uint64 va);
-struct memoryPageEntry* proc_findMemoryPageEntryByVa(struct proc *p, uint64 va);
-void                    proc_set_mpe(struct proc *p, struct memoryPageEntry *mpe, uint64 va);
 
 // swtch.S
 void            swtch(struct context*, struct context*);
@@ -176,11 +177,11 @@ void            kvmmap(pagetable_t, uint64, uint64, uint64, int);
 int             mappages(pagetable_t, uint64, uint64, uint64, int);
 pagetable_t     uvmcreate(void);
 void            uvminit(pagetable_t, uchar *, uint);
-uint64          uvmalloc(pagetable_t, uint64, uint64);
-uint64          uvmdealloc(pagetable_t, uint64, uint64);
+uint64          uvmalloc(pagetable_t pagetable, uint64 oldsz, struct file *swapFile, int ignoreSwapping, struct pagingMetadata *pmd, uint64 newsz);
+uint64          uvmdealloc(pagetable_t pagetable, struct pagingMetadata *pmd, int ignoreSwapping, uint64 oldsz, uint64 newsz);
 int             uvmcopy(pagetable_t, pagetable_t, uint64);
 void            uvmfree(pagetable_t, uint64);
-void            uvmunmap(pagetable_t, uint64, uint64, int);
+void            uvmunmap(pagetable_t pagetable, struct pagingMetadata *pmd, int ignoreSwapping, uint64 va, uint64 npages, int do_free);
 void            uvmclear(pagetable_t, uint64);
 pte_t*          walk(pagetable_t, uint64, int);
 uint64          walkaddr(pagetable_t, uint64);
@@ -188,7 +189,21 @@ int             copyout(pagetable_t, uint64, char *, uint64);
 int             copyin(pagetable_t, char *, uint64, uint64);
 int             copyinstr(pagetable_t, char *, uint64, uint64);
 
-uint64          uvmalloc_withSwapping(uint64 newsz);
+// vm_paging.c
+void                    pmd_clear_mpe(struct pagingMetadata *pmd, struct memoryPageEntry *mpe);
+void                    pmd_clear_sfe(struct pagingMetadata *pmd, struct swapFileEntry *sfe);
+void                    pmd_set_sfe(struct pagingMetadata *pmd, struct swapFileEntry *sfe, uint64 va);
+void                    pmd_set_mpe(struct pagingMetadata *pmd, struct memoryPageEntry *mpe, uint64 va);
+struct memoryPageEntry* pmd_findMemoryPageEntryByVa(struct pagingMetadata *pmd, uint64 va);
+struct swapFileEntry*   pmd_findSwapFileEntryByVa(struct pagingMetadata *pmd, uint64 va);
+struct memoryPageEntry* pmd_findFreememoryPageEntry(struct pagingMetadata *pmd);
+struct swapFileEntry*   pmd_findFreeSwapFileEntry(struct pagingMetadata *pmd);
+int                     pmd_remove_va(struct pagingMetadata *pmd, uint64 va);
+struct memoryPageEntry* pmd_insert_va_to_memory_force(struct pagingMetadata *pmd, pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, uint64 va);
+struct memoryPageEntry* pmd_findSwapPageCandidate(struct pagingMetadata *pmd);
+int                     swapPageOut(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, struct pagingMetadata *pmd, struct memoryPageEntry *mpe, uint64 *ppa);
+int                     swapPageOut_core(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, struct pagingMetadata *pmd, struct memoryPageEntry *mpe, struct swapFileEntry *sfe, uint64 *ppa);
+int                     swapPageIn(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, struct pagingMetadata *pmd, struct swapFileEntry *sfe, struct memoryPageEntry *mpe);
 
 // plic.c
 void            plicinit(void);
