@@ -136,9 +136,11 @@ found:
     return 0;
   }
 
+  #ifndef PG_REPLACE_NONE
   p->ignorePageSwapping = 0;
   p->ignorePageSwapping_parent = 0;
   pmd_init(&p->pagingMetadata);
+  #endif
 
   // Set up new context to start executing at forkret,
   // which returns to user space.
@@ -235,8 +237,10 @@ userinit(void)
 
   p = allocproc();
   initproc = p;
+  #ifndef PG_REPLACE_NONE
   p->ignorePageSwapping = 1;
   p->ignorePageSwapping_parent = 1;
+  #endif
   
   // allocate one user page and copy init's instructions
   // and data into it.
@@ -282,7 +286,9 @@ int
 fork(void)
 {
   int i, pid;
+  #ifndef PG_REPLACE_NONE
   uint64 va;
+  #endif
   struct proc *np;
   struct proc *p = myproc();
 
@@ -291,8 +297,10 @@ fork(void)
     return -1;
   }
 
+  #ifndef PG_REPLACE_NONE
   np->ignorePageSwapping = p == initproc;
   np->ignorePageSwapping_parent = p->ignorePageSwapping;
+  #endif
 
   // Copy user memory from parent to child.
   if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
@@ -321,6 +329,7 @@ fork(void)
 
   release(&np->lock);
 
+  #ifndef PG_REPLACE_NONE
   // whether the new process is not initproc or the shell
   if (!np->ignorePageSwapping) {
     if (createSwapFile(np) != 0) {
@@ -362,6 +371,7 @@ fork(void)
       }
     }
   }
+  #endif
 
   acquire(&wait_lock);
   np->parent = p;
@@ -409,10 +419,12 @@ exit(int status)
     }
   }
 
+  #ifndef PG_REPLACE_NONE
   if(p->swapFile != 0){
     removeSwapFile(p);
     p->swapFile = 0;
   }
+  #endif
 
   begin_op();
   iput(p->cwd);

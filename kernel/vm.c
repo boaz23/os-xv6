@@ -86,10 +86,12 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
 
   for(int level = 2; level > 0; level--) {
     pte_t *pte = &pagetable[PX(level, va)];
+    #ifndef PG_REPLACE_NONE
     if (*pte & PTE_PG) {
       // in our page swapping, only leaf pages are paged out
       panic("walk non-leaf PG page");
     }
+    #endif
     if(*pte & PTE_V) {
       pagetable = (pagetable_t)PTE2PA(*pte);
     } else {
@@ -151,9 +153,13 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
 
   a = PGROUNDDOWN(va);
   last = PGROUNDDOWN(va + size - 1);
+  #ifndef PG_REPLACE_NONE
   if (!(perm & PTE_PG)) {
     perm |= PTE_V;
   }
+  #else
+  perm |= PTE_V;
+  #endif
 
   for(;;){
     if((pte = walk(pagetable, a, 1)) == 0)

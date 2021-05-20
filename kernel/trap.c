@@ -30,6 +30,14 @@ trapinithart(void)
   w_stvec((uint64)kernelvec);
 }
 
+static void
+printUserTrap(struct proc *p)
+{
+  printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+  printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+  p->killed = 1;
+}
+
 //
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
@@ -41,8 +49,8 @@ usertrap(void)
   uint64 scause;
   #ifndef PG_REPLACE_NONE
   uint64 stval;
-  #endif
   int validTrap;
+  #endif
 
   if((r_sstatus() & SSTATUS_SPP) != 0)
     panic("usertrap: not from user mode");
@@ -55,7 +63,7 @@ usertrap(void)
   
   // save user program counter.
   p->trapframe->epc = r_sepc();
-  
+
   scause = r_scause();
   if(scause == 8){
     // system call
@@ -75,8 +83,8 @@ usertrap(void)
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
-    validTrap = 0;
     #ifndef PG_REPLACE_NONE
+    validTrap = 0;
     if (scause == PGFAULT_INSTRUCTION || scause == PGFAULT_LOAD || scause == PGFAULT_STORE) {
       if (scause == PGFAULT_INSTRUCTION) {
         // TODO: remove later after some testing
@@ -87,13 +95,13 @@ usertrap(void)
       stval = r_stval();
       validTrap = proc_handlePageFault(stval) >= 0;
     }
-    #endif
 
     if (!validTrap) {
-      printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
-      printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
-      p->killed = 1;
+      printUserTrap(p);
     }
+    #else
+    printUserTrap(p);
+    #endif
   }
 
   if(p->killed)
