@@ -927,7 +927,8 @@ reparent(char *s)
 void
 twochildren(char *s)
 {
-  for(int i = 0; i < 1000; i++){
+  // lowered from 1000 because it just takes too long
+  for(int i = 0; i < 100; i++){
     int pid1 = fork();
     if(pid1 < 0){
       printf("%s: fork failed\n", s);
@@ -1004,6 +1005,9 @@ forkforkfork(char *s)
       if(fd >= 0){
         exit(0);
       }
+      // TODO: is this allocating too much swap files
+      // before the parent can stop it?
+      sleep(2);
       if(fork() < 0){
         close(open("stopforking", O_CREATE|O_RDWR));
       }
@@ -1026,7 +1030,8 @@ forkforkfork(char *s)
 void
 reparent2(char *s)
 {
-  for(int i = 0; i < 800; i++){
+  // lowered from 800 because it just takes too long
+  for(int i = 0; i < 100; i++){
     int pid1 = fork();
     if(pid1 < 0){
       printf("fork failed\n");
