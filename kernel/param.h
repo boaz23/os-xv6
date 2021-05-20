@@ -22,3 +22,17 @@
 #define ARR_LEN(a) (sizeof((a)) / sizeof((a)[0]))
 #define ARR_END(a) (&((a)[ARR_LEN(a)]))
 #define FOR_EACH(var, a) for (var = (a); var < ARR_END(a); var++)
+
+#define XSTR(x) STR(x)
+#define STR(x) #x
+
+#define SELECTION_NFUA   1
+#define SELECTION_LAPA   2
+#define SELECTION_SCFIFO 3
+#define SELECTION_NONE   4
+
+#if SELECTION == SELECTION_NONE
+#ifndef PG_REPLACE_NONE
+#define PG_REPLACE_NONE
+#endif
+#endif

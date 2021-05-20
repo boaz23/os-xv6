@@ -72,6 +72,22 @@ ifneq ($(shell $(CC) -dumpspecs 2>/dev/null | grep -e '[^f]nopie'),)
 CFLAGS += -fno-pie -nopie
 endif
 
+ifndef SELECTION
+SELECTION = SCFIFO
+endif
+
+ifneq ($(SELECTION), NFUA)
+ifneq ($(SELECTION), LAPA)
+ifneq ($(SELECTION), SCFIFO)
+ifneq ($(SELECTION), NONE)
+$(error Selection algorithm is not recognized)
+endif
+endif
+endif
+endif
+
+CFLAGS += -DSELECTION=SELECTION_$(SELECTION)
+
 LDFLAGS = -z max-page-size=4096
 
 $K/kernel: $(OBJS) $K/kernel.ld $U/initcode

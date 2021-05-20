@@ -6,6 +6,9 @@
 
 volatile static int started = 0;
 
+static void
+print_pageReplacementPolicy();
+
 // start() jumps here in supervisor mode on all CPUs.
 void
 main()
@@ -16,6 +19,8 @@ main()
     printf("\n");
     printf("xv6 kernel is booting\n");
     printf("\n");
+    // TODO: remove later
+    print_pageReplacementPolicy();
     kinit();         // physical page allocator
     kvminit();       // create kernel page table
     kvminithart();   // turn on paging
@@ -42,4 +47,21 @@ main()
   }
 
   scheduler();        
+}
+
+void
+print_pageReplacementPolicy()
+{
+  printf("SELECTION = %s\n", XSTR(SELECTION));
+  #if SELECTION == SELECTION_NFUA
+    printf("page replacement: NFUA (NFU + AGING)\n");
+  #elif SELECTION == SELECTION_LAPA
+    printf("page replacement: LAPA (least access page + AGING)\n");
+  #elif SELECTION == SELECTION_SCFIFO
+    printf("page replacement: SCFIFO (second chance FIFO)\n");
+  #elif SELECTION == SELECTION_NONE
+    printf("page replacement: NONE\n");
+  #else
+    panic("page replacement no policy");
+  #endif
 }
