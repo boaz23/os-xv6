@@ -823,38 +823,3 @@ kfile_read_offset(struct file *file, char* buffer, uint placeOnFile, uint size)
   file->off = placeOnFile;
   return kfileread(file, (uint64)buffer, size);
 }
-
-int
-kfile_inode_copy(struct file *file_src, struct file *file_dest)
-{
-  void *buffer;
-  uint offset;
-
-  if (file_src->type != FD_INODE) {
-    return -1;
-  }
-  if (file_dest->type != FD_INODE) {
-    return -1;
-  }
-
-  buffer = kalloc();
-  if (!buffer) {
-    return -1;
-  }
-
-  offset = 0;
-  while (file_dest->ip->size < file_src->ip->size) {
-    if (kfile_read_offset(file_src, buffer, offset, PGSIZE) < 0) {
-      kfree(buffer);
-      return -1;
-    }
-    if (kfile_write_offset(file_dest, buffer, offset, PGSIZE) < 0) {
-      kfree(buffer);
-      return -1;
-    }
-    offset += PGSIZE;
-  }
-
-  kfree(buffer);
-  return 0;
-}

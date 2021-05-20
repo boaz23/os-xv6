@@ -209,6 +209,7 @@ int                     swapPageOut_core(pagetable_t pagetable, struct file *swa
 int                     swapPageIn(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, struct pagingMetadata *pmd, struct swapFileEntry *sfe, struct memoryPageEntry *mpe);
 struct memoryPageEntry* pmd_findSwapPageCandidate(struct pagingMetadata *pmd);
 int                     handlePageFault(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, struct pagingMetadata *pmd, uint64 sz, uint64 va);
+int                     copy_swap_file(struct file *swapFile_src, struct file *swapFile_dest, struct pagingMetadata *pmd);
 
 // plic.c
 void            plicinit(void);

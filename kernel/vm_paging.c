@@ -1,5 +1,9 @@
 #include "vm_paging.h"
 #include "riscv.h"
+#include "fs.h"
+#include "spinlock.h"
+#include "sleeplock.h"
+#include "file.h"
 #include "defs.h"
 
 void
@@ -158,7 +162,7 @@ pmd_insert_va_to_memory_force(struct pagingMetadata *pmd, pagetable_t pagetable,
     if (!swapFile) {
       return 0;
     }
-    
+
     mpe = pmd_findSwapPageCandidate(pmd);
     err = swapPageOut(pagetable, swapFile, ignoreSwapping, pmd, mpe, 0);
     if (err < 0) {
@@ -403,5 +407,43 @@ handlePageFault(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping
     return -1;
   }
 
+  return 0;
+}
+
+int
+copy_swap_file(struct file *swapFile_src, struct file *swapFile_dest, struct pagingMetadata *pmd)
+{
+  void *buffer = 0;
+  struct swapFileEntry *sfe;
+
+  swapFile_src->off = 0;
+  swapFile_dest->off = 0;
+  FOR_EACH(sfe, pmd->swapFileEntries) {
+    if (sfe->present) {
+      if (!buffer) {
+        buffer = kalloc();
+        if (!buffer) {
+          return -1;
+        }
+      }
+
+      if (kfile_read_offset(swapFile_src, buffer, SFE_OFFSET(pmd, sfe), PGSIZE) < 0) {
+        if (buffer) {
+          kfree(buffer);
+        }
+        return -1;
+      }
+      if (kfilewrite(swapFile_dest, (uint64)buffer, PGSIZE) < 0) {
+        if (buffer) {
+          kfree(buffer);
+        }
+        return -1;
+      }
+    }
+  }
+
+  if (buffer) {
+    kfree(buffer);
+  }
   return 0;
 }

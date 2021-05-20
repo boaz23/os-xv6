@@ -4,13 +4,12 @@
 
 #define PGSIZE 4096
 #define FREE_SPACE_ON_RAM 12
-#define PG_AMOUNT 26
-#define ADDR(i) (i * PGSIZE + 1)
+#define PG_AMOUNT 20
+#define ADDR(i) (i * PGSIZE)
 
 int main()
 {
     printf("parent pid %d\n", getpid());
-    printf("here\n");
     char *alloc = malloc(PG_AMOUNT * PGSIZE);
     printf("Allocated %p\n", alloc);
     for (int i = 0; i < PG_AMOUNT; i++)
@@ -26,7 +25,7 @@ int main()
     if (pid == 0)
     {
         printf("child %d printing:\n", getpid());
-        for (int i = 0; i < 20; i++)
+        for (int i = 0; i < PG_AMOUNT; i++)
         {
             printf("    alloc[%p] = %c\n", i * PGSIZE, alloc[ADDR(i)]);
         }

@@ -356,7 +356,7 @@ fork(void)
     else {
       // the parent is a regular process, we can just copy his
       np->pagingMetadata = p->pagingMetadata;
-      if (kfile_inode_copy(p->swapFile, np->swapFile) < 0) {
+      if (copy_swap_file(p->swapFile, np->swapFile, &p->pagingMetadata) < 0) {
         freeproc(np);
         return 0;
       }
