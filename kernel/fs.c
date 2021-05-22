@@ -810,7 +810,7 @@ readFromSwapFile(struct proc * p, char* buffer, uint placeOnFile, uint size)
 }
 
 int
-kfile_write_offset(struct file *file, char* buffer, uint placeOnFile, uint size)
+kfilewrite_offset(struct file *file, char* buffer, uint placeOnFile, uint size)
 {
   file->off = placeOnFile;
   return kfilewrite(file, (uint64)buffer, size);
@@ -818,7 +818,7 @@ kfile_write_offset(struct file *file, char* buffer, uint placeOnFile, uint size)
 
 //return as sys_read (-1 when error)
 int
-kfile_read_offset(struct file *file, char* buffer, uint placeOnFile, uint size)
+kfileread_offset(struct file *file, char* buffer, uint placeOnFile, uint size)
 {
   file->off = placeOnFile;
   return kfileread(file, (uint64)buffer, size);

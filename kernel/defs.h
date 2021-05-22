@@ -63,8 +63,8 @@ int             createSwapFile(struct proc* p);
 int             readFromSwapFile(struct proc * p, char* buffer, uint placeOnFile, uint size);
 int             writeToSwapFile(struct proc* p, char* buffer, uint placeOnFile, uint size);
 int             removeSwapFile(struct proc* p);
-int             kfile_write_offset(struct file *file, char* buffer, uint placeOnFile, uint size);
-int             kfile_read_offset(struct file *file, char* buffer, uint placeOnFile, uint size);
+int             kfilewrite_offset(struct file *file, char* buffer, uint placeOnFile, uint size);
+int             kfileread_offset(struct file *file, char* buffer, uint placeOnFile, uint size);
 int             kfile_inode_copy(struct file *file_src, struct file *file_dest);
 
 // ramdisk.c

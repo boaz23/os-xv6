@@ -236,7 +236,7 @@ swapPageOut_core(pagetable_t pagetable, struct file *swapFile, int ignoreSwappin
   }
 
   pa = PTE2PA(*pte);
-  if (kfile_write_offset(swapFile, (char *)pa, SFE_OFFSET(pmd, sfe), PGSIZE) < 0) {
+  if (kfilewrite_offset(swapFile, (char *)pa, SFE_OFFSET(pmd, sfe), PGSIZE) < 0) {
     return -1;
   }
   
@@ -310,7 +310,7 @@ swapPageIn(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, str
   if (!sfe_buffer) {
     return -1;
   }
-  if (kfile_read_offset(swapFile, (char *)sfe_buffer, SFE_OFFSET(pmd, sfe), PGSIZE) < 0) {
+  if (kfileread_offset(swapFile, (char *)sfe_buffer, SFE_OFFSET(pmd, sfe), PGSIZE) < 0) {
     kfree(sfe_buffer);
     return -1;
   }
@@ -427,7 +427,7 @@ copy_swap_file(struct file *swapFile_src, struct file *swapFile_dest, struct pag
         }
       }
 
-      if (kfile_read_offset(swapFile_src, buffer, SFE_OFFSET(pmd, sfe), PGSIZE) < 0) {
+      if (kfileread_offset(swapFile_src, buffer, SFE_OFFSET(pmd, sfe), PGSIZE) < 0) {
         if (buffer) {
           kfree(buffer);
         }
