@@ -9,6 +9,17 @@ volatile static int started = 0;
 static void
 print_pageReplacementPolicy();
 
+uint
+countSetBits2(uint n)
+{
+  uint counter = 0;
+  while (n) {
+    counter += n & 1;
+    n >>= 1;
+  }
+  return counter;
+}
+
 // start() jumps here in supervisor mode on all CPUs.
 void
 main()

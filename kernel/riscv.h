@@ -331,7 +331,7 @@ sfence_vma()
 #define PTE_W  (1L << 2)
 #define PTE_X  (1L << 3)
 #define PTE_U  (1L << 4) // 1 -> user can access
-#define PTE_A  (1L << 6) // accessed, referenced, was this page read from
+#define PTE_A  (1L << 6) // accessed, referenced, was this page read from or written to
 #define PTE_D  (1L << 7) // dirty, was this page written to
 #define PTE_PG (1L << 9) // was this page paged out
 
@@ -359,3 +359,7 @@ sfence_vma()
 
 typedef uint64 pte_t;
 typedef uint64 *pagetable_t; // 512 PTEs
+
+#define BITS_IN_BYTE 8
+#define BITS_SIZE(s) ((sizeof((s)))*BITS_IN_BYTE)
+#define MSB(s) (1 << (BITS_SIZE(s) - 1))
