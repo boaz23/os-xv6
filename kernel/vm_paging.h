@@ -12,6 +12,9 @@ struct swapFileEntry {
 struct memoryPageEntry {
   uint64 va;
   int present;
+  #if SELECTION == SELECTION_NFUA || SELECTION == SELECTION_LAPA
+  uint age;
+  #endif
 };
 
 struct pagingMetadata {

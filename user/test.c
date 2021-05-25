@@ -17,26 +17,27 @@ int main()
     {
         printf("%d, %p\n", i, &alloc[ADDR(i)]);
         alloc[ADDR(i)] = 'a' + i;
+        sleep(1);
     }
-    for (int i = 0; i < PG_AMOUNT; i++)
-    {
-        printf("alloc[%p] = %c\n", i * PGSIZE, alloc[ADDR(i)]);
-    }
-    int pid = fork();
-    if (pid == 0)
-    {
-        printf("child %d printing:\n", getpid());
-        for (int i = 0; i < PG_AMOUNT; i++)
-        {
-            printf("    alloc[%p] = %c\n", i * PGSIZE, alloc[ADDR(i)]);
-        }
-        // alloc[PG_AMOUNT*PGSIZE] = 5;
-    }
-    else if(pid > 0){
-        wait(0);
-        // c = alloc[PG_AMOUNT*PGSIZE];
-        // printf("c: %d\n", c);
-    }
+    // for (int i = 0; i < PG_AMOUNT; i++)
+    // {
+    //     printf("alloc[%p] = %c\n", i * PGSIZE, alloc[ADDR(i)]);
+    // }
+    // int pid = fork();
+    // if (pid == 0)
+    // {
+    //     printf("child %d printing:\n", getpid());
+    //     for (int i = 0; i < PG_AMOUNT; i++)
+    //     {
+    //         printf("    alloc[%p] = %c\n", i * PGSIZE, alloc[ADDR(i)]);
+    //     }
+    //     // alloc[PG_AMOUNT*PGSIZE] = 5;
+    // }
+    // else if(pid > 0){
+    //     wait(0);
+    //     // c = alloc[PG_AMOUNT*PGSIZE];
+    //     // printf("c: %d\n", c);
+    // }
     free(alloc);
     exit(0);
 }

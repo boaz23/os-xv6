@@ -36,3 +36,6 @@
 #define PG_REPLACE_NONE
 #endif
 #endif
+
+#define INITIAL_VALUE_NFUA 0
+#define INITIAL_VALUE_LAPA 0xFFFFFFFF

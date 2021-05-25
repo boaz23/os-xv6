@@ -528,6 +528,11 @@ scheduler(void)
         c->proc = p;
         swtch(&c->context, &p->context);
 
+        // update paging metadata stats (aging)
+        #if SELECTION == SELECTION_NFUA || SELECTION == SELECTION_LAPA
+        pmd_updateStats(p->pagetable, &p->pagingMetadata);
+        #endif
+
         // Process is done running for now.
         // It should have changed its p->state before coming back.
         c->proc = 0;

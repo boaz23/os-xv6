@@ -2,9 +2,35 @@
 #include "riscv.h"
 #include "fs.h"
 #include "spinlock.h"
+#include "proc.h"
 #include "sleeplock.h"
 #include "file.h"
 #include "defs.h"
+
+static inline void
+clear_mpe_age(struct memoryPageEntry *mpe)
+{
+  #if SELECTION == SELECTION_NFUA
+  mpe->age = INITIAL_VALUE_NFUA;
+  #elif SELECTION == SELECTION_LAPA
+  mpe->age = INITIAL_VALUE_LAPA;
+  #endif
+}
+
+void
+clear_mpe(struct memoryPageEntry *mpe)
+{
+  mpe->va = -1;
+  mpe->present = 0;
+  clear_mpe_age(mpe);
+}
+
+void
+clear_sfe(struct swapFileEntry *sfe)
+{
+  sfe->va = -1;
+  sfe->present = 0;
+}
 
 void
 pmd_init(struct pagingMetadata *pmd)
@@ -14,28 +40,24 @@ pmd_init(struct pagingMetadata *pmd)
   pmd->pagesInMemory = 0;
   pmd->pagesInDisk = 0;
   FOR_EACH(mpe, pmd->memoryPageEntries) {
-    mpe->va = -1;
-    mpe->present = 0;
+    clear_mpe(mpe);
   }
   FOR_EACH(sfe, pmd->swapFileEntries) {
-    sfe->va = -1;
-    sfe->present = 0;
+    clear_sfe(sfe);
   }
 }
 
 void
 pmd_clear_mpe(struct pagingMetadata *pmd, struct memoryPageEntry *mpe)
 {
-  mpe->va = -1;
-  mpe->present = 0;
+  clear_mpe(mpe);
   pmd->pagesInMemory--;
 }
 
 void
 pmd_clear_sfe(struct pagingMetadata *pmd, struct swapFileEntry *sfe)
 {
-  sfe->va = -1;
-  sfe->present = 0;
+  clear_sfe(sfe);
   pmd->pagesInDisk--;
 }
 
@@ -52,7 +74,28 @@ pmd_set_mpe(struct pagingMetadata *pmd, struct memoryPageEntry *mpe, uint64 va)
 {
   mpe->va = va;
   mpe->present = 1;
+  clear_mpe_age(mpe);
   pmd->pagesInMemory++;
+}
+
+void
+printMpe(struct pagingMetadata *pmd, struct memoryPageEntry *mpe, char *fName, int pid)
+{
+  if (mpe->present) {
+    printf("proc %d - %s: mem entry %d#%p", pid, fName, INDEX_OF_MPE(pmd, mpe), mpe->va);
+    #if SELECTION == SELECTION_NFUA || SELECTION == SELECTION_LAPA
+    printf(", age=%x", mpe->age);
+    #endif
+    printf("\n");
+  }
+}
+
+void
+printSfe(struct pagingMetadata *pmd, struct swapFileEntry *sfe, char *fName, int pid)
+{
+  if (sfe->present) {
+    printf("proc %d - %s: swap file entry %d#%p\n", pid, fName, INDEX_OF_SFE(pmd, sfe), sfe->va);
+  }
 }
 
 void
@@ -63,14 +106,10 @@ pmd_printEntries(struct pagingMetadata *pmd, char *fName, int pid)
   printf("proc %d - %s: pages in mem: %d\n", pid, fName, pmd->pagesInMemory);
   printf("proc %d - %s: pages in swap file: %d\n", pid, fName, pmd->pagesInDisk);
   FOR_EACH(mpe, pmd->memoryPageEntries) {
-    if (mpe->present) {
-      printf("proc %d - %s:   mem entry %d#%p\n", pid, fName, INDEX_OF_MPE(pmd, mpe), mpe->va);
-    }
+    printMpe(pmd, mpe, fName, pid);
   }
   FOR_EACH(sfe, pmd->swapFileEntries) {
-    if (sfe->present) {
-      printf("proc %d - %s:   swap file entry %d#%p\n", pid, fName, INDEX_OF_SFE(pmd, sfe), sfe->va);
-    }
+    printSfe(pmd, sfe, fName, pid);
   }
 }
 
@@ -341,27 +380,6 @@ swapPageIn(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, str
   #endif
 }
 
-struct memoryPageEntry*
-pmd_findSwapPageCandidate(struct pagingMetadata *pmd)
-{
-  // for now, just an algorithm which returns the first valid page
-  struct memoryPageEntry *mpe;
-  struct memoryPageEntry *mpe_0 = 0;
-  for (mpe = &pmd->memoryPageEntries[MAX_PSYC_PAGES - 1]; mpe >= pmd->memoryPageEntries; mpe--) {
-  // FOR_EACH(mpe, pmd->memoryPageEntries) {
-    if (mpe->present) {
-      if (mpe->va == 0) {
-        mpe_0 = mpe;
-      }
-      else {
-        return mpe;
-      }
-    }
-  }
-
-  return mpe_0;
-}
-
 int
 handlePageFault(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, struct pagingMetadata *pmd, uint64 sz, uint64 va)
 {
@@ -446,4 +464,132 @@ copy_swap_file(struct file *swapFile_src, struct file *swapFile_dest, struct pag
     kfree(buffer);
   }
   return 0;
+}
+
+void
+pmd_updateStats(pagetable_t pagetable, struct pagingMetadata *pmd)
+{
+  #if SELECTION == SELECTION_NFUA || SELECTION == SELECTION_LAPA
+  struct memoryPageEntry *mpe;
+  pte_t *pte;
+  FOR_EACH(mpe, pmd->memoryPageEntries) {
+    if (!mpe->present) {
+      continue;
+    }
+
+    pte = walk(pagetable, mpe->va, 0);
+    if (!pte) {
+      panic("paging metadata update stats: PTE not found");
+    }
+
+    mpe->age >>= 1;
+    if (*pte & PTE_A) {
+      mpe->age |= MSB(mpe->age);
+      *pte &= ~PTE_A;
+    }
+  }
+  #endif
+}
+
+uint
+countSetBits(uint n)
+{
+  uint counter = 0;
+  while (n) {
+    counter += n & 1;
+    n >>= 1;
+  }
+  return counter;
+}
+
+struct memoryPageEntry*
+pmd_findSwapPageCandidate_nfua(struct pagingMetadata *pmd)
+{
+  #if SELECTION == SELECTION_NFUA
+  struct memoryPageEntry *mpe;
+  struct memoryPageEntry *mpe_min = &pmd->memoryPageEntries[0];
+  printMpe(pmd, mpe_min, "page selection nfua", myproc()->pid);
+  for (mpe = mpe_min + 1; mpe < ARR_END(pmd->memoryPageEntries); mpe++) {
+    if (mpe_min->age >= mpe->age) {
+      mpe_min = mpe;
+    }
+  }
+  return mpe_min;
+  #else
+  panic("page selection: NFUA");
+  #endif
+}
+
+struct memoryPageEntry*
+pmd_findSwapPageCandidate_lapa(struct pagingMetadata *pmd)
+{
+  #if SELECTION == SELECTION_LAPA
+  struct memoryPageEntry *mpe;
+  uint setBits;
+  struct memoryPageEntry *mpe_min = &pmd->memoryPageEntries[0];
+  uint min_value = countSetBits(mpe_min->age);
+  for (mpe = mpe_min + 1; mpe < ARR_END(pmd->memoryPageEntries); mpe++) {
+    setBits = countSetBits(mpe->age);
+    if (min_value > setBits) {
+      min_value = setBits;
+      mpe_min = mpe;
+    }
+    else if (min_value == setBits) {
+      if (mpe_min->age >= mpe->age) {
+        mpe_min = mpe;
+      }
+    }
+  }
+  return mpe_min;
+  #else
+  panic("page selection: LAPA");
+  #endif
+}
+
+struct memoryPageEntry*
+pmd_findSwapPageCandidate_scfifo(struct pagingMetadata *pmd)
+{
+  #if SELECTION == SELECTION_SCFIFO
+  // pmd_findSwapPageCandidate_scfifo(pmd);
+  return 0;
+  #else
+  panic("page selection: LAPA");
+  #endif
+}
+
+struct memoryPageEntry*
+pmd_findSwapPageCandidate_last(struct pagingMetadata *pmd)
+{
+  // for now, just an algorithm which returns the first valid page
+  struct memoryPageEntry *mpe;
+  struct memoryPageEntry *mpe_0 = 0;
+  for (mpe = &pmd->memoryPageEntries[MAX_PSYC_PAGES - 1]; mpe >= pmd->memoryPageEntries; mpe--) {
+  // FOR_EACH(mpe, pmd->memoryPageEntries) {
+    if (mpe->present) {
+      if (mpe->va == 0) {
+        mpe_0 = mpe;
+      }
+      else {
+        return mpe;
+      }
+    }
+  }
+
+  return mpe_0;
+}
+
+struct memoryPageEntry*
+pmd_findSwapPageCandidate(struct pagingMetadata *pmd)
+{
+  struct memoryPageEntry *mpe;
+  #if SELECTION == SELECTION_NFUA
+  mpe = pmd_findSwapPageCandidate_nfua(pmd);
+  #elif SELECTION == SELECTION_LAPA
+  mpe = pmd_findSwapPageCandidate_lapa(pmd);
+  #elif SELECTION == SELECTION_SCFIFO
+  mpe = pmd_findSwapPageCandidate_scfifo(pmd);
+  #else
+  panic("page selection: other");
+  #endif
+  return mpe;
 }
