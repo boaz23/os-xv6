@@ -633,12 +633,5 @@ pmd_findSwapPageCandidate(struct pagingMetadata *pmd)
   #else
   panic("page selection: other");
   #endif
-  printf("\n");
-  if (!myproc()->ignorePageSwapping) {
-    printf("update %d, %d\n", myproc()->pid, myproc()->updatesCount);
-  }
-  myproc()->updatesCount = 0;
-  printf("proc %d - %s: chose mem entry %d#%p, age=%x\n", myproc()->pid, "page selection", INDEX_OF_MPE(pmd, mpe), mpe->va, mpe->age);
-  pmd_printEntries(pmd, "page selection", myproc()->pid);
   return mpe;
 }
