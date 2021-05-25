@@ -197,7 +197,7 @@ void                    pmd_clear_mpe(struct pagingMetadata *pmd, struct memoryP
 void                    pmd_clear_sfe(struct pagingMetadata *pmd, struct swapFileEntry *sfe);
 void                    pmd_set_sfe(struct pagingMetadata *pmd, struct swapFileEntry *sfe, uint64 va);
 void                    pmd_set_mpe(struct pagingMetadata *pmd, struct memoryPageEntry *mpe, uint64 va);
-void                    pmd_printEntries(struct pagingMetadata *pmd, char *fName, int pid);
+void                    pmd_printEntries(pagetable_t pagetable, struct pagingMetadata *pmd, char *fName, int pid);
 struct memoryPageEntry* pmd_findMemoryPageEntryByVa(struct pagingMetadata *pmd, uint64 va);
 struct swapFileEntry*   pmd_findSwapFileEntryByVa(struct pagingMetadata *pmd, uint64 va);
 struct memoryPageEntry* pmd_findFreeMemoryPageEntry(struct pagingMetadata *pmd);
@@ -207,7 +207,7 @@ struct memoryPageEntry* pmd_insert_va_to_memory_force(struct pagingMetadata *pmd
 int                     swapPageOut(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, struct pagingMetadata *pmd, struct memoryPageEntry *mpe, uint64 *ppa);
 int                     swapPageOut_core(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, struct pagingMetadata *pmd, struct memoryPageEntry *mpe, struct swapFileEntry *sfe, uint64 *ppa);
 int                     swapPageIn(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, struct pagingMetadata *pmd, struct swapFileEntry *sfe, struct memoryPageEntry *mpe);
-struct memoryPageEntry* pmd_findSwapPageCandidate(struct pagingMetadata *pmd);
+struct memoryPageEntry* pmd_findSwapPageCandidate(pagetable_t pagetable, struct pagingMetadata *pmd);
 int                     handlePageFault(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, struct pagingMetadata *pmd, uint64 sz, uint64 va);
 int                     copy_swap_file(struct file *swapFile_src, struct file *swapFile_dest, struct pagingMetadata *pmd);
 void                    pmd_updateStats(pagetable_t pagetable, struct pagingMetadata *pmd);

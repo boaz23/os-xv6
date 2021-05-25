@@ -26,6 +26,9 @@
 #define XSTR(x) STR(x)
 #define STR(x) #x
 
+#define INDEX_CYCLE_ADD(len, i, j) (((i) + (j)) % (len))
+#define INDEX_CYCLE_NEXT(len, i) INDEX_CYCLE_ADD(len, i, 1)
+
 #define SELECTION_NFUA   1
 #define SELECTION_LAPA   2
 #define SELECTION_SCFIFO 3
