@@ -22,4 +22,7 @@ struct pagingMetadata {
   int pagesInDisk;
   struct memoryPageEntry memoryPageEntries[MAX_PSYC_PAGES];
   struct swapFileEntry swapFileEntries[MAX_PGOUT_PAGES];
+  #if SELECTION == SELECTION_SCFIFO
+  int scfifoIndex;
+  #endif
 };

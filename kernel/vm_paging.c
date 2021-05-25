@@ -39,6 +39,9 @@ pmd_init(struct pagingMetadata *pmd)
   struct swapFileEntry *sfe;
   pmd->pagesInMemory = 0;
   pmd->pagesInDisk = 0;
+  #if SELECTION == SELECTION_SCFIFO
+  pmd->scfifoIndex = 0;
+  #endif
   FOR_EACH(mpe, pmd->memoryPageEntries) {
     clear_mpe(mpe);
   }
@@ -165,6 +168,42 @@ pmd_findFreeSwapFileEntry(struct pagingMetadata *pmd)
   return 0;
 }
 
+#if SELECTION == SELECTION_SCFIFO
+void
+comprase_memoryPageMetaData(struct pagingMetadata *pmd, struct memoryPageEntry *from_mpe)
+{
+  struct memoryPageEntry newMemoryPageEntries[MAX_PSYC_PAGES];
+  struct memoryPageEntry *mpe;
+  int i;
+  struct memoryPageEntry *mpeInsertion = &newMemoryPageEntries[0];
+  for (mpe = &pmd->memoryPageEntries[pmd->scfifoIndex]; mpe->present && mpe < ARR_END(pmd->memoryPageEntries); mpe++) {
+    if (mpe == from_mpe) {
+      continue;
+    }
+
+    *mpeInsertion = *mpe;
+    mpeInsertion++;
+  }
+  for (mpe = 0; mpe->present && mpe < &pmd->memoryPageEntries[pmd->scfifoIndex]; mpe++) {
+    if (mpe == from_mpe) {
+      continue;
+    }
+
+    *mpeInsertion = *mpe;
+    mpeInsertion++;
+  }
+  for (i = 0; i < INDEX_OF(mpeInsertion, newMemoryPageEntries); i++) {
+    pmd->memoryPageEntries[i] = newMemoryPageEntries[i];
+  }
+  for (mpe = mpeInsertion; mpe < ARR_END(pmd->memoryPageEntries); mpe++) {
+    clear_mpe(mpe);
+  }
+
+  pmd->pagesInMemory--;
+  pmd->scfifoIndex = 0;
+}
+#endif
+
 int
 pmd_remove_va(struct pagingMetadata *pmd, uint64 va)
 {
@@ -173,7 +212,11 @@ pmd_remove_va(struct pagingMetadata *pmd, uint64 va)
 
   mpe = pmd_findMemoryPageEntryByVa(pmd, va);
   if (mpe) {
+    #if SELECTION == SELECTION_SCFIFO
+    comprase_memoryPageMetaData(pmd, mpe);
+    #else
     pmd_clear_mpe(pmd, mpe);
+    #endif
     return 0;
   }
 
@@ -590,5 +633,12 @@ pmd_findSwapPageCandidate(struct pagingMetadata *pmd)
   #else
   panic("page selection: other");
   #endif
+  printf("\n");
+  if (!myproc()->ignorePageSwapping) {
+    printf("update %d, %d\n", myproc()->pid, myproc()->updatesCount);
+  }
+  myproc()->updatesCount = 0;
+  printf("proc %d - %s: chose mem entry %d#%p, age=%x\n", myproc()->pid, "page selection", INDEX_OF_MPE(pmd, mpe), mpe->va, mpe->age);
+  pmd_printEntries(pmd, "page selection", myproc()->pid);
   return mpe;
 }

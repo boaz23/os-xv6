@@ -51,6 +51,14 @@ printint(int xx, int base, int sign)
 }
 
 static void
+printhex(uint32 x)
+{
+  int i;
+  for (i = 0; i < (sizeof(uint32) * 2); i++, x <<= 4)
+    consputc(digits[x >> (sizeof(uint32) * 8 - 4)]);
+}
+
+static void
 printptr(uint64 x)
 {
   int i;
@@ -89,7 +97,7 @@ printf(char *fmt, ...)
       printint(va_arg(ap, int), 10, 1);
       break;
     case 'x':
-      printint(va_arg(ap, int), 16, 1);
+      printhex(va_arg(ap, int));
       break;
     case 'p':
       printptr(va_arg(ap, uint64));
