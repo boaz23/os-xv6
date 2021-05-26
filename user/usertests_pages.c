@@ -4,7 +4,7 @@
 #include "user.h"
 
 #define MAX_MEM_SZ (32 * PGSIZE)
-#define NPAGES 24
+#define NPAGES 0x18
 #define REGION_SZ (NPAGES * PGSIZE)
 #define STEP PGSIZE
 #define SBRK_FAIL_RET ((char*)-1L)
@@ -86,11 +86,13 @@ wait_status(char *s, int expected_pid, int expectedStatus)
 
 // taken and adopted from lazytests
 void
-paging_sparse_memory_core(char *s, int allocationSize)
+paging_sparse_memory_core(char *s, int allocationSize, char **pPrevEnd, char **pNewEnd)
 {
   char *prevEnd, *newEnd;
 
-  alloc(s, allocationSize, &prevEnd, &newEnd);
+  alloc(s, allocationSize, pNewEnd, pPrevEnd);
+  prevEnd = *pPrevEnd;
+  newEnd = *pNewEnd;
   memoryRange_writeValues(prevEnd, newEnd);
   memoryRange_readValues(s, prevEnd, newEnd);
 }
@@ -98,7 +100,8 @@ paging_sparse_memory_core(char *s, int allocationSize)
 static inline void
 paging_sparse_memory(char *s)
 {
-  paging_sparse_memory_core(s, REGION_SZ);
+  char *prevEnd, *newEnd;
+  paging_sparse_memory_core(s, REGION_SZ, &prevEnd, &newEnd);
 }
 
 void
@@ -179,6 +182,57 @@ invalid_memory_access(char *s)
 }
 
 int
+full_memory_core(char *s)
+{
+  char *prevEnd, *newEnd;
+  int allocationSize;
+
+  allocationSize = MAX_MEM_SZ - (int)(uint64)sbrk(0);
+  if (alloc_core(allocationSize + 1, &prevEnd, &newEnd) == 0) {
+    printf("%s: alloc of more than 32 pages allowed\n", s);
+    exit(1);
+  }
+
+  paging_sparse_memory_core(s, allocationSize, &prevEnd, &newEnd);
+  return allocationSize;
+}
+
+void
+realloc_read_write(char *s, char *start, char *end, int step)
+{
+  char *i;
+  RANGE(i, start, end, step) {
+    *(uint64*)i = (uint64)i / PGSIZE;
+  }
+  RANGE(i, start, end, step) {
+    if (*(uint64*)i != (uint64)i / PGSIZE) {
+      printf("%s: failed to read value from memory\n", s);
+      exit(1);
+    }
+  }
+}
+
+void
+realloc(char *s)
+{
+  int allocationSize;
+  char *prevEnd, *newEnd;
+  
+  allocationSize = REGION_SZ;
+  paging_sparse_memory_core(s, allocationSize, &prevEnd, &newEnd);
+  sbrk(-allocationSize);
+  allocationSize = allocationSize - PGSIZE;
+  alloc(s, allocationSize, &prevEnd, &newEnd);
+  realloc_read_write(s, prevEnd + PGSIZE, newEnd, PGSIZE);
+}
+
+void
+full_memory(char *s)
+{
+  full_memory_core(s);
+}
+
+int
 full_memory_fork_core(char *s)
 {
   char *prevEnd, *newEnd;
@@ -190,7 +244,7 @@ full_memory_fork_core(char *s)
     exit(1);
   }
 
-  paging_sparse_memory_core(s, allocationSize);
+  paging_sparse_memory_core(s, allocationSize, &prevEnd, &newEnd);
   paging_sparse_memory_fork_core(s, prevEnd, newEnd);
   return allocationSize;
 }
@@ -205,62 +259,59 @@ void
 pagefaults_benchmark(char *s)
 {
   int i, j;
-  uint64 **array; // uint64[256, 384]
+  uint64 *array; // uint64[256, 48]
   int l0, l1;
   char *prevEnd, *newEnd;
   int allocationSize;
   int pagefaultCount1, pagefaultCount2;
-  int t0, tf;
-
+  int t0, t1, t2, tf;
+  
   t0 = uptime();
   allocationSize = REGION_SZ + PGSIZE;
   alloc(s, allocationSize, &prevEnd, &newEnd);
 
-  array = (uint64**)PAGE_END(prevEnd);
+  array = (uint64*)PAGE_END(prevEnd);
   l0 = 256;
-  l1 = 384;
+  l1 = 48;
 
   for (i = 0; i < l0; i++) {
     for (j = 0; j < l1; j++) {
-        array[i][j] = 5;
+      array[l1*i + j] = 5;
     }
   }
+  t1 = uptime();
   pagefaultCount1 = pgfault_reset();
 
   for (j = 0; j < l1; j++) {
     for (i = 0; i < l0; i++) {
-        array[i][j] = 0;
+      array[l1*i + j] = 5;
     }
   }
+  t2 = uptime();
   pagefaultCount2 = pgfault_reset();
 
   sbrk(-allocationSize);
 
   tf = uptime();
-  printf("page faults count row based:    %d\n", pagefaultCount1);
-  printf("page faults count column based: %d\n", pagefaultCount2);
+  printf("\n");
+  printf("row based time took:            %d\n", t1 - t0);
+  printf("row based page faults count:    %d\n", pagefaultCount1);
+  printf("column based time took:         %d\n", t2 - t1);
+  printf("column based page faults count: %d\n", pagefaultCount2);
   printf("total ticks took:               %d\n", tf - t0);
+  printf("total page faults:              %d\n", pagefaultCount1 + pagefaultCount2);
 }
 
 void
 full_memory_fork_realloc(char *s)
 {
   int allocationSize;
-  char *i, *prevEnd, *newEnd;
+  char *prevEnd, *newEnd;
   
   allocationSize = full_memory_fork_core(s);
   sbrk(-allocationSize);
   alloc(s, REGION_SZ, &prevEnd, &newEnd);
-
-  RANGE(i, prevEnd + PGSIZE, newEnd, STEP) {
-    *(uint64*)i = (uint64)i / PGSIZE;
-  }
-  RANGE(i, prevEnd + PGSIZE, newEnd, STEP) {
-    if (*(uint64*)i != (uint64)i / PGSIZE) {
-      printf("%s: failed to read value from memory\n", s);
-      exit(1);
-    }
-  }
+  realloc_read_write(s, prevEnd + PGSIZE, newEnd, PGSIZE);
 }
 
 //
@@ -373,9 +424,11 @@ main(int argc, char *argv[])
     { paging_sparse_memory, "paging_sparse_memory" },
     { paging_sparse_memory_fork, "paging_sparse_memory_fork" },
     { invalid_memory_access, "invalid_memory_access" },
-    { pagefaults_benchmark, "pagefaults_benchmark" },
+    { full_memory, "full_memory" },
+    { realloc, "realloc" },
     { full_memory_fork, "full_memory_fork" },
     { full_memory_fork_realloc, "full_memory_fork_realloc" },
+    { pagefaults_benchmark, "pagefaults_benchmark" },
     { 0, 0},
   };
 
