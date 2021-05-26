@@ -42,6 +42,7 @@ pmd_init(struct pagingMetadata *pmd)
   #if SELECTION == SELECTION_SCFIFO
   pmd->scfifoIndex = 0;
   #endif
+  pmd->pgfaultCount = 0;
   FOR_EACH(mpe, pmd->memoryPageEntries) {
     clear_mpe(mpe);
   }
@@ -442,6 +443,7 @@ handlePageFault(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping
     return -1;
   }
 
+  pmd->pgfaultCount++;
   pgAddr = PGROUNDDOWN(va);
   pte = walk(pagetable, pgAddr, 0);
   if (!pte) {

@@ -741,3 +741,11 @@ proc_handlePageFault(uint64 va)
   p = myproc();
   return handlePageFault(p->pagetable, p->swapFile, p->ignorePageSwapping, &p->pagingMetadata, p->sz, va);
 }
+
+int proc_pgfault_reset(struct proc *p)
+{
+  int *pPgfaultCount = &p->pagingMetadata.pgfaultCount;
+  int pgfaultCount = *pPgfaultCount;
+  *pPgfaultCount = 0;
+  return pgfaultCount;
+}

@@ -25,4 +25,5 @@ struct pagingMetadata {
   #if SELECTION == SELECTION_SCFIFO
   int scfifoIndex;
   #endif
+  int pgfaultCount;
 };

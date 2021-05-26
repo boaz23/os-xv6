@@ -96,3 +96,9 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64
+sys_pgfault_reset(void)
+{
+  return proc_pgfault_reset(myproc());
+}
