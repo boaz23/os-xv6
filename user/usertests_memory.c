@@ -155,6 +155,12 @@ invalid_memory_access_fork(char *s, char *p, int i, int expected_xstatus)
 }
 
 void
+stackguard_access(char *s)
+{
+  invalid_memory_access_fork(s, (char *)PGROUNDDOWN((uint64)(sbrk(0) - 2*PGSIZE)), (uptime() * 21) % PGSIZE, -1);
+}
+
+void
 invalid_memory_access(char *s)
 {
   char *prevEnd;
@@ -423,6 +429,7 @@ main(int argc, char *argv[])
   } tests[] = {
     { paging_sparse_memory, "paging_sparse_memory" },
     { paging_sparse_memory_fork, "paging_sparse_memory_fork" },
+    { stackguard_access, "stackguard_access" },
     { invalid_memory_access, "invalid_memory_access" },
     { realloc, "realloc" },
     #ifndef PG_REPLACE_NONE
