@@ -4,7 +4,8 @@
 #include "user.h"
 
 #define MAX_MEM_SZ (32 * PGSIZE)
-#define REGION_SZ (24 * PGSIZE)
+#define NPAGES 24
+#define REGION_SZ (NPAGES * PGSIZE)
 #define STEP PGSIZE
 #define SBRK_FAIL_RET ((char*)-1L)
 #define PAGE_END(p)  ((char *)PGROUNDUP((uint64)p))
@@ -201,6 +202,47 @@ full_memory_fork(char *s)
 }
 
 void
+pagefaults_benchmark(char *s)
+{
+  int i, j;
+  uint64 **array; // uint64[256, 384]
+  int l0, l1;
+  char *prevEnd, *newEnd;
+  int allocationSize;
+  int pagefaultCount1, pagefaultCount2;
+  int t0, tf;
+
+  t0 = uptime();
+  allocationSize = REGION_SZ + PGSIZE;
+  alloc(s, allocationSize, &prevEnd, &newEnd);
+
+  array = (uint64**)PAGE_END(prevEnd);
+  l0 = 256;
+  l1 = 384;
+
+  for (i = 0; i < l0; i++) {
+    for (j = 0; j < l1; j++) {
+        array[i][j] = 5;
+    }
+  }
+  pagefaultCount1 = pgfault_reset();
+
+  for (j = 0; j < l1; j++) {
+    for (i = 0; i < l0; i++) {
+        array[i][j] = 0;
+    }
+  }
+  pagefaultCount2 = pgfault_reset();
+
+  sbrk(-allocationSize);
+
+  tf = uptime();
+  printf("page faults count row based:    %d\n", pagefaultCount1);
+  printf("page faults count column based: %d\n", pagefaultCount2);
+  printf("total ticks took:               %d\n", tf - t0);
+}
+
+void
 full_memory_fork_realloc(char *s)
 {
   int allocationSize;
@@ -331,6 +373,7 @@ main(int argc, char *argv[])
     { paging_sparse_memory, "paging_sparse_memory" },
     { paging_sparse_memory_fork, "paging_sparse_memory_fork" },
     { invalid_memory_access, "invalid_memory_access" },
+    { pagefaults_benchmark, "pagefaults_benchmark" },
     { full_memory_fork, "full_memory_fork" },
     { full_memory_fork_realloc, "full_memory_fork_realloc" },
     { 0, 0},
