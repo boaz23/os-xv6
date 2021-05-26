@@ -7,6 +7,7 @@
 #define REGION_SZ (24 * PGSIZE)
 #define STEP PGSIZE
 #define SBRK_FAIL_RET ((char*)-1L)
+#define PAGE_END(p)  ((char *)PGROUNDUP((uint64)p))
 
 int
 alloc_core(int allocationSize, char **pPrevEnd, char **pNewEnd)
@@ -68,6 +69,20 @@ memoryRange_readValues(char *s, char *prevEnd, char *newEnd)
   }
 }
 
+void
+wait_status(char *s, int expected_pid, int expectedStatus)
+{
+  int status;
+  if (wait(&status) != expected_pid) {
+    printf("%s: wait bad child pid\n", s);
+    exit(1);
+  }
+  if (status != expectedStatus) {
+    printf("%s: child bad exit status\n", s);
+    exit(1);
+  }
+}
+
 // taken and adopted from lazytests
 void
 paging_sparse_memory_core(char *s, int allocationSize)
@@ -97,15 +112,7 @@ paging_sparse_memory_fork_core(char *s, char *prevEnd, char *newEnd)
   }
   else if (pid_child > 0) {
     // parent
-    int status;
-    if (wait(&status) != pid_child) {
-      printf("%s: wait bad child pid\n", s);
-      exit(1);
-    }
-    if (status != 0) {
-      printf("%s: child bad exit status\n", s);
-      exit(1);
-    }
+    wait_status(s, pid_child, 0);
   }
   else {
     // child
@@ -124,7 +131,54 @@ paging_sparse_memory_fork(char *s)
 }
 
 void
-full_memory_fork(char *s)
+invalid_memory_access_fork(char *s, char *p, int i, int expected_xstatus)
+{
+  int pid_child;
+
+  pid_child = fork();
+  if (pid_child < 0) {
+    printf("%s: fork failed\n", s);
+    exit(1);
+  }
+  else if (pid_child > 0) {
+    wait_status(s, pid_child, expected_xstatus);
+  }
+  else {
+    // child
+    p[i] = 5;
+    exit(0);
+  }
+}
+
+void
+invalid_memory_access(char *s)
+{
+  char *prevEnd;
+  char *p;
+  int i;
+
+  prevEnd = sbrk(0);
+  p = PAGE_END(prevEnd);
+
+  if (sbrk(p - prevEnd) == SBRK_FAIL_RET) {
+    printf("%s: sbrk failed\n", s);
+    exit(1);
+  }
+
+  RANGE(i, 0, PGSIZE, PGSIZE / 8) {
+    invalid_memory_access_fork(s, p, i, -1);
+  }
+  invalid_memory_access_fork(s, p, PGSIZE - 1, -1);
+
+  if (sbrk(1) == SBRK_FAIL_RET) {
+    printf("%s: sbrk 2 failed\n", s);
+    exit(1);
+  }
+  invalid_memory_access_fork(s, p, 0, 0);
+}
+
+int
+full_memory_fork_core(char *s)
 {
   char *prevEnd, *newEnd;
   int allocationSize;
@@ -137,6 +191,34 @@ full_memory_fork(char *s)
 
   paging_sparse_memory_core(s, allocationSize);
   paging_sparse_memory_fork_core(s, prevEnd, newEnd);
+  return allocationSize;
+}
+
+static inline void
+full_memory_fork(char *s)
+{
+  full_memory_fork_core(s);
+}
+
+void
+full_memory_fork_realloc(char *s)
+{
+  int allocationSize;
+  char *i, *prevEnd, *newEnd;
+  
+  allocationSize = full_memory_fork_core(s);
+  sbrk(-allocationSize);
+  alloc(s, REGION_SZ, &prevEnd, &newEnd);
+
+  RANGE(i, prevEnd + PGSIZE, newEnd, STEP) {
+    *(uint64*)i = (uint64)i / PGSIZE;
+  }
+  RANGE(i, prevEnd + PGSIZE, newEnd, STEP) {
+    if (*(uint64*)i != (uint64)i / PGSIZE) {
+      printf("%s: failed to read value from memory\n", s);
+      exit(1);
+    }
+  }
 }
 
 //
@@ -248,7 +330,9 @@ main(int argc, char *argv[])
   } tests[] = {
     { paging_sparse_memory, "paging_sparse_memory" },
     { paging_sparse_memory_fork, "paging_sparse_memory_fork" },
+    { invalid_memory_access, "invalid_memory_access" },
     { full_memory_fork, "full_memory_fork" },
+    { full_memory_fork_realloc, "full_memory_fork_realloc" },
     { 0, 0},
   };
 
