@@ -49,7 +49,6 @@ usertrap(void)
   uint64 scause;
   #ifndef PG_REPLACE_NONE
   uint64 stval;
-  int validTrap;
   #endif
 
   if((r_sstatus() & SSTATUS_SPP) != 0)
@@ -84,26 +83,17 @@ usertrap(void)
     // ok
   } else {
     #ifndef PG_REPLACE_NONE
-    validTrap = 0;
     if (scause == PGFAULT_INSTRUCTION || scause == PGFAULT_LOAD || scause == PGFAULT_STORE) {
-      if (scause == PGFAULT_INSTRUCTION) {
-        // TODO: remove later after some testing
-        // printf("proc %d, instruction page fault va %p\n", myproc()->pid, r_stval());
-        // panic("trap: page fault instruction");
-      }
-
       stval = r_stval();
-      validTrap = proc_handlePageFault(stval) >= 0;
+      if (proc_handlePageFault(stval) >= 0) {
+        goto causeEnd;
+      }
     }
-
-    if (!validTrap) {
-      printUserTrap(p);
-    }
-    #else
-    printUserTrap(p);
     #endif
+    printUserTrap(p);
   }
 
+causeEnd:
   if(p->killed)
     exit(-1);
 
