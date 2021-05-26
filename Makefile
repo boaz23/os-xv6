@@ -150,8 +150,8 @@ UPROGS=\
 	$U/_wc\
 	$U/_zombie\
 	$U/_lazytests\
-	$U/_usertests_pages\
-	# $U/_test\
+	$U/_usertests_memory\
+	$U/_test\
 	# $U/_usertests_some\
 
 fs.img: mkfs/mkfs README $(UPROGS)

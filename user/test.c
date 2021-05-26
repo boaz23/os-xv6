@@ -135,23 +135,26 @@ void segmentation_test(char *s) {
     }
 }
 void pagefaults_test(char *s) {
-    int pagefaults = 0;
+    int pagefaults1 = 0, pagefaults2 = 0;
     char *alloc = malloc(NPAGES * PGSIZE);
     for (int i = 0; i < NPAGES; i++)
     {
         alloc[i * PGSIZE] = 'a' + i;
     }
-    if (pagefaults == get_pagefaults()) {
+    pagefaults1 = pgfault_reset();
+    if (pagefaults1 == 0) {
+        printf("0 pagefaults 1\n");
         exit(1);
     }
-    pagefaults = get_pagefaults();
     for (int i = 0; i < NPAGES; i++)
     {
         if (alloc[i*PGSIZE] != 'a'+i) {
             exit(1);
         }
     }
-    if (pagefaults == get_pagefaults()) {
+    pagefaults2 = pgfault_reset();
+    if (pagefaults2 == 0) {
+        printf("0 pagefaults 2\n");
         exit(1);
     }
 
@@ -216,103 +219,3 @@ int main(int argc, char *argv[])
         exit(0);
     }
 }
-/**
- * +#include "types.h"
-+#include "stat.h"
-+#include "user.h"
-+#include "syscall.h"
-+
-+#define PGSIZE 4096
-+#define FREE_SPACE_ON_RAM 12
-+void waitForUserToAnalyze();
-+
-+// Global Variables
-+int i,j,pid;
-+char* pages[25];
-+char buffer[10];
-+
-+
-+
-+// -------- MAIN --------
-+
-+int main(int argc, char *argv[]) {
-+
-+    // ___ Paging Framework Testing ___
-+    printf(1, "Allocating pages..\n");
-+    for(i = 0; i < FREE_SPACE_ON_RAM; i++){
-+        pages[i] = sbrk(PGSIZE);
-+        printf(1, "page #%d is at address: %x\n", i, pages[i]);
-+    }
-+    printf(1, "Now ram is full\n"); 
-+    waitForUserToAnalyze();
-+    
-+    printf(1, "Try to access pages 0,1,2\n");
-+    pages[0][0] = 1;
-+    pages[1][0] = 1;
-+    pages[2][0] = 1;
-+    printf(1, "Not expecting page faults,all pages are on the ram\n");
-+    waitForUserToAnalyze();
-+    
-+    printf(1, "Allocating more pages,expecting page faults in all\n"); 
-+    for(j = 0; j<FREE_SPACE_ON_RAM; j++){
-+    	printf(1, "page #%d at address: %x\n", i, pages[i]);
-+        pages[i] = sbrk(PGSIZE);
-+        i++;
-+    }
-+
-+    ();
-+
-+    printf(1, "Try to access pages 0,1,2,5,14\n");
-+    pages[0][0] = 1;
-+    pages[1][0] = 1;
-+    pages[2][0] = 1;
-+    pages[5][0] = 1;
-+    pages[14][0] = 1;
-+    waitForUserToAnalyze();
-+
-+
-+    // ============= Fork =============
-+    printf(1, "Fork..\n");
-+    pid = fork();
-+    if (pid != 0){
-+        sleep(2);
-+        wait();
-+        printf(1, "Father - success\n");
-+        waitForUserToAnalyze();
-+    }
-+    else {
-+        //son
-+        printf(1, "Child trying to access pages 0,1,2,5,14\n");
-+        pages[0][0] = 1;
-+        pages[1][0] = 1;
-+        pages[2][0] = 1;
-+        pages[5][0] = 1;
-+        pages[14][0] = 1;
-+        printf(1, "Not expecting page faults\n");
-+        waitForUserToAnalyze();
-+        exit();
-+    }
-+
-+	
-+    // ============= Free Pages =============
-+	printf(1, "Free pages..\n");
-+	for(i = 0; i < (FREE_SPACE_ON_RAM*2); i++){
-+		pages[i] = sbrk(-PGSIZE);
-+		printf(1, "page #%d at address: %x\n", i, pages[i]);
-+	}
-+
-+	printf(1, "tests ended successfully\n");
-+	exit();
-+	return 0;
-+}
-+
-+
-+// -------- Helper Function --------
-+void waitForUserToAnalyze()
-+{
-+	printf(1, "Analyze using <CTRL+P> or press ENTER to continue\n");
-+	gets(buffer,3);
-+}
-+
-+
-*/

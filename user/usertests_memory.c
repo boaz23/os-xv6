@@ -263,7 +263,7 @@ pagefaults_benchmark(char *s)
   int l0, l1;
   char *prevEnd, *newEnd;
   int allocationSize;
-  int pagefaultCount1, pagefaultCount2;
+  int pagefaultCount1 = 0, pagefaultCount2 = 0;
   int t0, t1, t2, tf;
   
   t0 = uptime();
@@ -294,9 +294,9 @@ pagefaults_benchmark(char *s)
 
   tf = uptime();
   printf("\n");
-  printf("row based time took:            %d\n", t1 - t0);
+  printf("row based ticks took:            %d\n", t1 - t0);
   printf("row based page faults count:    %d\n", pagefaultCount1);
-  printf("column based time took:         %d\n", t2 - t1);
+  printf("column based ticks took:         %d\n", t2 - t1);
   printf("column based page faults count: %d\n", pagefaultCount2);
   printf("total ticks took:               %d\n", tf - t0);
   printf("total page faults:              %d\n", pagefaultCount1 + pagefaultCount2);
@@ -424,12 +424,14 @@ main(int argc, char *argv[])
     { paging_sparse_memory, "paging_sparse_memory" },
     { paging_sparse_memory_fork, "paging_sparse_memory_fork" },
     { invalid_memory_access, "invalid_memory_access" },
-    { full_memory, "full_memory" },
     { realloc, "realloc" },
+    #ifndef PG_REPLACE_NONE
+    { full_memory, "full_memory" },
     { full_memory_fork, "full_memory_fork" },
     { full_memory_fork_realloc, "full_memory_fork_realloc" },
+    #endif
     { pagefaults_benchmark, "pagefaults_benchmark" },
-    { 0, 0},
+    { 0, 0 },
   };
 
   printf("usertests starting\n");
