@@ -70,6 +70,10 @@ void full_swap_test(char *s)
     }
     sbrk(-allocsize);
 }
+
+#define BCHMRK_L0 100
+#define BCHMRK_L1 100
+
 void benchmark(char *s)
 {
     int up = uptime();
@@ -98,21 +102,24 @@ void benchmark(char *s)
         alloc[i * PGSIZE] = 'a' + i;
     }
     free(alloc);
-    int **array = (int **)malloc(100*sizeof(int*));
-    for(int i = 0; i < 100; i++) {
-        array[i] = malloc(100 * sizeof(int));
+    int **array = (int **)malloc(BCHMRK_L0*sizeof(int*));
+    for(int i = 0; i < BCHMRK_L0; i++) {
+        array[i] = malloc(BCHMRK_L1 * sizeof(int));
     }
-    for (int i = 0; i < 100; i++) {
-       for (int j = 0; j < 100; j++) {
+    printf("AAAA\n");
+    for (int i = 0; i < BCHMRK_L0; i++) {
+       for (int j = 0; j < BCHMRK_L1; j++) {
            array[i][j] = 0;
        }
     }
-    for (int j = 0; j < 100; j++) {
-       for (int i = 0; i < 100; i++) {
+    printf("BBBB\n");
+    for (int j = 0; j < BCHMRK_L1; j++) {
+       for (int i = 0; i < BCHMRK_L0; i++) {
            array[i][j] = 0;
        }
     }
-    for(int i = 0; i < 100; i++) {
+    printf("DDDD\n");
+    for(int i = 0; i < BCHMRK_L0; i++) {
        free(array[i]);
     }
     free(array);
@@ -192,11 +199,11 @@ int main(int argc, char *argv[])
         void (*f)(char *);
         char *s;
     } tests[] = {
-        {test_read_write, "read_write_test"},
-        {fork_test, "fork_test"},
-        {full_swap_test, "full_swap_test"},
-        {segmentation_test,"segmentation_test"},
-        {pagefaults_test, "pagefault_test"},
+        // {test_read_write, "read_write_test"},
+        // {fork_test, "fork_test"},
+        // {full_swap_test, "full_swap_test"},
+        // {segmentation_test,"segmentation_test"},
+        // {pagefaults_test, "pagefault_test"},
         {benchmark, "benchmark"}, 
         {0, 0},
     };
