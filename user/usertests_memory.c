@@ -157,7 +157,7 @@ invalid_memory_access_fork(char *s, char *p, int i, int expected_xstatus)
 void
 stackguard_access(char *s)
 {
-  invalid_memory_access_fork(s, (char *)PGROUNDDOWN((uint64)(sbrk(0) - 2*PGSIZE)), (uptime() * 21) % PGSIZE, -1);
+  invalid_memory_access_fork(s, (char *)PGROUNDDOWN((uint64)(sbrk(0) - 2*PGSIZE)), (uptime() * 127) % PGSIZE, -1);
 }
 
 void
