@@ -374,7 +374,7 @@ swapPageIn(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, str
   if (!mpe && pmd->pagesInMemory == MAX_PSYC_PAGES) {
     panic("page swap in: no memory page to swap out");
   }
-  if (!(0 <= INDEX_OF_MPE(pmd, mpe) && INDEX_OF_MPE(pmd, mpe) < MAX_PSYC_PAGES)) {
+  if (mpe && !(0 <= INDEX_OF_MPE(pmd, mpe) && INDEX_OF_MPE(pmd, mpe) < MAX_PSYC_PAGES)) {
     panic("page swap in: mpe index out of range");
   }
   if (mpe && !mpe->present) {
@@ -445,19 +445,28 @@ handlePageFault(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping
 
   pmd->pgfaultCount++;
   pgAddr = PGROUNDDOWN(va);
-  pte = walk(pagetable, pgAddr, 0);
-  if (!pte) {
-    return -1;
-  }
-  if (*pte & PTE_V) {
-    panic("page fault: valid page");
-  }
-  if (!(*pte & PTE_PG)) {
+
+  // printf("page fault for %d on %p\n", myproc()->pid, va);
+
+  // TODO: decide if to remove
+  if (pgAddr >= PGROUNDUP(sz)) {
     return -1;
   }
 
-  // TODO: decide if to remove
-  if (!(*pte & PTE_U) && pgAddr >= sz) {
+  pte = walk(pagetable, pgAddr, 0);
+  if (!pte) {
+    // unmapped page
+    return -1;
+  }
+  if ((*pte & PTE_V) && (*pte & PTE_U)) {
+    panic("page fault: valid user page");
+  }
+  if (((*pte & PTE_V) != 0) == ((*pte & PTE_PG) != 0)) {
+    panic("page fault: valid xor paged out");
+  }
+  if (!(*pte & PTE_PG)) {
+    // valid non-user page not paged out
+    // maybe stack guard page
     return -1;
   }
 
