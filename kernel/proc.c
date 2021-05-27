@@ -280,6 +280,31 @@ growproc(int n)
   return 0;
 }
 
+void
+closeFiles(struct proc *p)
+{
+  // Close all open files.
+  for(int fd = 0; fd < NOFILE; fd++){
+    if(p->ofile[fd]){
+      struct file *f = p->ofile[fd];
+      fileclose(f);
+      p->ofile[fd] = 0;
+    }
+  }
+
+  #ifndef PG_REPLACE_NONE
+  if(p->swapFile != 0){
+    removeSwapFile(p);
+    p->swapFile = 0;
+  }
+  #endif
+
+  begin_op();
+  iput(p->cwd);
+  end_op();
+  p->cwd = 0;
+}
+
 // Create a new process, copying the parent.
 // Sets up child kernel stack to return as if from fork() system call.
 int
@@ -356,6 +381,7 @@ fork(void)
       if (PGROUNDUP(p->sz) / PGSIZE < MAX_TOTAL_PAGES) {
         for(va = 0; va < p->sz; va += PGSIZE) {
           if (pmd_insert_va_to_memory_force(&np->pagingMetadata, np->pagetable, np->swapFile, 0, va) < 0) {
+            closeFiles(np);
             freeproc(np);
             return 0;
           }
@@ -366,6 +392,7 @@ fork(void)
       // the parent is a regular process, we can just copy his
       np->pagingMetadata = p->pagingMetadata;
       if (copy_swap_file(p->swapFile, np->swapFile, &p->pagingMetadata) < 0) {
+        closeFiles(np);
         freeproc(np);
         return 0;
       }
@@ -411,25 +438,7 @@ exit(int status)
     panic("init exiting");
 
   // Close all open files.
-  for(int fd = 0; fd < NOFILE; fd++){
-    if(p->ofile[fd]){
-      struct file *f = p->ofile[fd];
-      fileclose(f);
-      p->ofile[fd] = 0;
-    }
-  }
-
-  #ifndef PG_REPLACE_NONE
-  if(p->swapFile != 0){
-    removeSwapFile(p);
-    p->swapFile = 0;
-  }
-  #endif
-
-  begin_op();
-  iput(p->cwd);
-  end_op();
-  p->cwd = 0;
+  closeFiles(p);
 
   acquire(&wait_lock);
 
