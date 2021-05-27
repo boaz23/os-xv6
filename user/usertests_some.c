@@ -1007,7 +1007,7 @@ forkforkfork(char *s)
       }
       // TODO: is this allocating too much swap files
       // before the parent can stop it?
-      sleep(2);
+      sleep(5);
       if(fork() < 0){
         close(open("stopforking", O_CREATE|O_RDWR));
       }
