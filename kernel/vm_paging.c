@@ -247,9 +247,11 @@ pmd_insert_va_to_memory_force(struct pagingMetadata *pmd, pagetable_t pagetable,
   if (ignoreSwapping) {
     return 0;
   }
+  #ifdef PG_PANIC_CHECKS
   if (pmd->pagesInMemory > MAX_PSYC_PAGES) {
     panic("insert mpe: more than max pages in memory");
   }
+  #endif
   if (pmd->pagesInMemory == MAX_PSYC_PAGES) {
     if (!swapFile) {
       return 0;
@@ -263,9 +265,11 @@ pmd_insert_va_to_memory_force(struct pagingMetadata *pmd, pagetable_t pagetable,
   }
   else {
     mpe = pmd_findFreeMemoryPageEntry(pmd);
+    #ifdef PG_PANIC_CHECKS
     if (!mpe) {
       panic("insert mpe: free mpe not found but process does not have max pages in memory");
     }
+    #endif
   }
 
   pmd_set_mpe(pmd, mpe, va);
@@ -281,6 +285,7 @@ swapPageOut(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, st
   uint64 pa;
   pte_t *pte;
 
+  #ifdef PG_PANIC_CHECKS
   if (ignoreSwapping) {
     panic("page swap out: ignored process");
   }
@@ -304,8 +309,10 @@ swapPageOut(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, st
   if (sfe->present) {
     panic("page swap out: swap file entry is present");
   }
+  #endif
 
   pte = walk(pagetable, mpe->va, 0);
+  #ifdef PG_PANIC_CHECKS
   if (!pte) {
     panic("page swap out: pte not found");
   }
@@ -315,6 +322,7 @@ swapPageOut(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, st
   if (*pte & PTE_PG) {
     panic("page swap out: paged out pte");
   }
+  #endif
 
   pa = PTE2PA(*pte);
   if (kfilewrite_offset(swapFile, (char *)pa, SFE_OFFSET(pmd, sfe), PGSIZE) < 0) {
@@ -347,6 +355,7 @@ swapPageIn(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, str
   uint64 va_src;
   void *sfe_buffer;
 
+  #ifdef PG_PANIC_CHECKS
   if (ignoreSwapping) {
     panic("page swap in: ignored process");
   }
@@ -380,8 +389,10 @@ swapPageIn(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, str
       panic("page swap in: no memory page to swap out");
     }
   }
+  #endif
 
   pte = walk(pagetable, sfe->va, 0);
+  #ifdef PG_PANIC_CHECKS
   if (!pte) {
     panic("page swap in: pte not found");
   }
@@ -391,6 +402,7 @@ swapPageIn(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, str
   if (!(*pte & PTE_PG)) {
     panic("page swap in: non-paged out pte");
   }
+  #endif
 
   // We want to swap out a memory page in favor the specified page in the swap file.
   // This is because the memory is full and the page replacement algorithm
@@ -449,6 +461,8 @@ handlePageFault(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping
     // unmapped page
     return -1;
   }
+
+  #ifdef PG_PANIC_CHECKS
   if (!(*pte & PTE_V) && !(*pte & PTE_U) && !(*pte & PTE_PG)) {
     panic("page fault: mapped page without flags");
   }
@@ -464,6 +478,8 @@ handlePageFault(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping
   if (!(*pte & PTE_V) && !(*pte & PTE_PG)) {
     panic("page fault: non-valid and non-paged out");
   }
+  #endif
+
   if (!(*pte & PTE_PG)) {
     // valid non-user page not paged out
     // maybe stack guard page
@@ -471,6 +487,8 @@ handlePageFault(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping
   }
 
   sfe = pmd_findSwapFileEntryByVa(pmd, pgAddr);
+
+  #ifdef PG_PANIC_CHECKS
   if (!sfe) {
     panic("page fault: paged out page's swap file entry not found");
   }
@@ -478,6 +496,8 @@ handlePageFault(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping
   if (pmd->pagesInMemory > MAX_PSYC_PAGES) {
     panic("pafe fault: more than max pages in memory");
   }
+  #endif
+  
   if (pmd->pagesInMemory < MAX_PSYC_PAGES) {
     mpe = pmd_findFreeMemoryPageEntry(pmd);
     swapOut = 0;

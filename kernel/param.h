@@ -12,6 +12,7 @@
 #define FSSIZE       1000  // size of file system in blocks
 #define MAXPATH      128   // maximum file path name
 
+// #define PG_PANIC_CHECKS
 #define MAX_PSYC_PAGES  16
 #define MAX_PGOUT_PAGES (MAX_TOTAL_PAGES - MAX_PSYC_PAGES)
 #define MAX_TOTAL_PAGES 32
