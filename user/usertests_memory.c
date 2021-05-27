@@ -300,9 +300,9 @@ pagefaults_benchmark(char *s)
 
   tf = uptime();
   printf("\n");
-  printf("row based ticks took:            %d\n", t1 - t0);
+  printf("row based ticks took:           %d\n", t1 - t0);
   printf("row based page faults count:    %d\n", pagefaultCount1);
-  printf("column based ticks took:         %d\n", t2 - t1);
+  printf("column based ticks took:        %d\n", t2 - t1);
   printf("column based page faults count: %d\n", pagefaultCount2);
   printf("total ticks took:               %d\n", tf - t0);
   printf("total page faults:              %d\n", pagefaultCount1 + pagefaultCount2);
