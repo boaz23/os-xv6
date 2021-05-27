@@ -52,15 +52,25 @@ main()
 void
 print_pageReplacementPolicy()
 {
+  #ifdef PG_PRINT_SELECTION
   printf("SELECTION = %s\n", XSTR(SELECTION));
+  #endif
   #if SELECTION == SELECTION_NFUA
+    #ifdef PG_PRINT_SELECTION
     printf("page replacement: NFUA (NFU + AGING)\n");
+    #endif
   #elif SELECTION == SELECTION_LAPA
+    #ifdef PG_PRINT_SELECTION
     printf("page replacement: LAPA (least access page + AGING)\n");
+    #endif
   #elif SELECTION == SELECTION_SCFIFO
+    #ifdef PG_PRINT_SELECTION
     printf("page replacement: SCFIFO (second chance FIFO)\n");
+    #endif
   #elif SELECTION == SELECTION_NONE
+    #ifdef PG_PRINT_SELECTION
     printf("page replacement: NONE\n");
+    #endif
   #else
     panic("page replacement no policy");
   #endif
