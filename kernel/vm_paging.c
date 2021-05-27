@@ -340,6 +340,10 @@ swapPageOut(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, st
   else {
     kfree((void *)pa);
   }
+
+  // no need to clear the TBL (sfence_vma()) because it's already happening
+  // when transfering from userspace to kernel space and vise-versa.
+  // see trampoline.S
   return 0;
   #endif
 }
@@ -432,6 +436,10 @@ swapPageIn(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, str
 
   pmd_set_mpe(pmd, mpe, va_src);
   *pte = PA2PTE(pa_dst) | PTE_FLAGS((*pte | PTE_V) & (~PTE_PG));
+
+  // no need to clear the TBL (sfence_vma()) because it's already happening
+  // when transfering from userspace to kernel space and vise-versa.
+  // see trampoline.S
   return 0;
   #endif
 }
