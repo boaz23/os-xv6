@@ -31,7 +31,7 @@ trapinithart(void)
 }
 
 static void
-printUserTrap(struct proc *p)
+invalidUserTrap(struct proc *p)
 {
   printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
   printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
@@ -90,10 +90,12 @@ usertrap(void)
       }
     }
     #endif
-    printUserTrap(p);
+    invalidUserTrap(p);
   }
 
+#ifndef PG_REPLACE_NONE
 causeEnd:
+#endif
   if(p->killed)
     exit(-1);
 
