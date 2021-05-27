@@ -241,8 +241,9 @@ pmd_remove_va(struct pagingMetadata *pmd, uint64 va)
 struct memoryPageEntry*
 pmd_insert_va_to_memory_force(struct pagingMetadata *pmd, pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, uint64 va)
 {
-  int err;
   struct memoryPageEntry *mpe;
+  struct swapFileEntry *sfe;
+
   if (ignoreSwapping) {
     return 0;
   }
@@ -254,9 +255,9 @@ pmd_insert_va_to_memory_force(struct pagingMetadata *pmd, pagetable_t pagetable,
       return 0;
     }
 
+    sfe = pmd_findFreeSwapFileEntry(pmd);
     mpe = pmd_findSwapPageCandidate(pagetable, pmd);
-    err = swapPageOut(pagetable, swapFile, ignoreSwapping, pmd, mpe, 0);
-    if (err < 0) {
+    if (swapPageOut(pagetable, swapFile, ignoreSwapping, pmd, mpe, sfe, 0) < 0) {
       return 0;
     }
   }
@@ -272,18 +273,7 @@ pmd_insert_va_to_memory_force(struct pagingMetadata *pmd, pagetable_t pagetable,
 }
 
 int
-swapPageOut(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, struct pagingMetadata *pmd, struct memoryPageEntry *mpe, uint64 *ppa)
-{
-  struct swapFileEntry *sfe = pmd_findFreeSwapFileEntry(pmd);
-  if (!sfe) {
-    return -2;
-  }
-
-  return swapPageOut_core(pagetable, swapFile, ignoreSwapping, pmd, mpe, sfe, ppa);
-}
-
-int
-swapPageOut_core(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, struct pagingMetadata *pmd, struct memoryPageEntry *mpe, struct swapFileEntry *sfe, uint64 *ppa)
+swapPageOut(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, struct pagingMetadata *pmd, struct memoryPageEntry *mpe, struct swapFileEntry *sfe, uint64 *ppa)
 {
   #ifdef PG_REPLACE_NONE
   panic("page swap out: no page replacement");
@@ -347,7 +337,7 @@ swapPageOut_core(pagetable_t pagetable, struct file *swapFile, int ignoreSwappin
 }
 
 int
-swapPageIn(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, struct pagingMetadata *pmd, struct swapFileEntry *sfe, struct memoryPageEntry *mpe)
+swapPageIn(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, struct pagingMetadata *pmd, struct swapFileEntry *sfe, struct memoryPageEntry *mpe, int swapOut)
 {
   #ifdef PG_REPLACE_NONE
   panic("page swap in: no page replacement");
@@ -371,14 +361,24 @@ swapPageIn(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, str
     panic("page swap in: swap file entry not present");
   }
 
-  if (!mpe && pmd->pagesInMemory == MAX_PSYC_PAGES) {
-    panic("page swap in: no memory page to swap out");
+  if (!mpe) {
+    panic("page swap in: mpe null");
   }
-  if (mpe && !(0 <= INDEX_OF_MPE(pmd, mpe) && INDEX_OF_MPE(pmd, mpe) < MAX_PSYC_PAGES)) {
+  if (!(0 <= INDEX_OF_MPE(pmd, mpe) && INDEX_OF_MPE(pmd, mpe) < MAX_PSYC_PAGES)) {
     panic("page swap in: mpe index out of range");
   }
-  if (mpe && !mpe->present) {
-    panic("page swap in: memory page not present");
+  if (swapOut) {
+    if (!mpe->present) {
+      panic("page swap in: memory page not present");
+    }
+  }
+  else {
+    if (mpe->present) {
+      panic("page swap in: memory page present");
+    }
+    if (pmd->pagesInMemory == MAX_PSYC_PAGES) {
+      panic("page swap in: no memory page to swap out");
+    }
   }
 
   pte = walk(pagetable, sfe->va, 0);
@@ -410,16 +410,8 @@ swapPageIn(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping, str
   pa_dst = (uint64)sfe_buffer;
 
   pmd_clear_sfe(pmd, sfe);
-  if (mpe) {
-    if (swapPageOut_core(pagetable, swapFile, ignoreSwapping, pmd, mpe, sfe, 0) < 0) {
-      pmd_set_sfe(pmd, sfe, va_src);
-      kfree(sfe_buffer);
-      return -1;
-    }
-  }
-  else {
-    mpe = pmd_findFreeMemoryPageEntry(pmd);
-    if (!mpe) {
+  if (swapOut) {
+    if (swapPageOut(pagetable, swapFile, ignoreSwapping, pmd, mpe, sfe, 0) < 0) {
       pmd_set_sfe(pmd, sfe, va_src);
       kfree(sfe_buffer);
       return -1;
@@ -439,6 +431,8 @@ handlePageFault(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping
   pte_t *pte;
   struct swapFileEntry *sfe;
   struct memoryPageEntry *mpe;
+  int swapOut;
+
   if (ignoreSwapping) {
     return -1;
   }
@@ -446,9 +440,6 @@ handlePageFault(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping
   pmd->pgfaultCount++;
   pgAddr = PGROUNDDOWN(va);
 
-  // printf("page fault for %d on %p\n", myproc()->pid, va);
-
-  // TODO: decide if to remove
   if (pgAddr >= PGROUNDUP(sz)) {
     return -1;
   }
@@ -458,11 +449,20 @@ handlePageFault(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping
     // unmapped page
     return -1;
   }
+  if (!(*pte & PTE_V) && !(*pte & PTE_U) && !(*pte & PTE_PG)) {
+    panic("page fault: mapped page without flags");
+  }
+  if ((*pte & PTE_V) && (*pte & PTE_U) && (*pte & PTE_PG)) {
+    panic("page fault: mapped page all flags");
+  }
   if ((*pte & PTE_V) && (*pte & PTE_U)) {
     panic("page fault: valid user page");
   }
-  if (((*pte & PTE_V) != 0) == ((*pte & PTE_PG) != 0)) {
-    panic("page fault: valid xor paged out");
+  if ((*pte & PTE_V) && (*pte & PTE_PG)) {
+    panic("page fault: valid and paged out");
+  }
+  if (!(*pte & PTE_V) && !(*pte & PTE_PG)) {
+    panic("page fault: non-valid and non-paged out");
   }
   if (!(*pte & PTE_PG)) {
     // valid non-user page not paged out
@@ -472,17 +472,22 @@ handlePageFault(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping
 
   sfe = pmd_findSwapFileEntryByVa(pmd, pgAddr);
   if (!sfe) {
-    return -1;
+    panic("page fault: paged out page's swap file entry not found");
   }
 
+  if (pmd->pagesInMemory > MAX_PSYC_PAGES) {
+    panic("pafe fault: more than max pages in memory");
+  }
   if (pmd->pagesInMemory < MAX_PSYC_PAGES) {
-    mpe = 0;
+    mpe = pmd_findFreeMemoryPageEntry(pmd);
+    swapOut = 0;
   }
   else {
     mpe = pmd_findSwapPageCandidate(pagetable, pmd);
+    swapOut = 1;
   }
 
-  if (swapPageIn(pagetable, swapFile, ignoreSwapping, pmd, sfe, mpe) < 0) {
+  if (swapPageIn(pagetable, swapFile, ignoreSwapping, pmd, sfe, mpe, swapOut) < 0) {
     return -1;
   }
 
@@ -676,7 +681,7 @@ pmd_findSwapPageCandidate_last(struct pagingMetadata *pmd)
 struct memoryPageEntry*
 pmd_findSwapPageCandidate(pagetable_t pagetable, struct pagingMetadata *pmd)
 {
-  struct memoryPageEntry *mpe;
+  struct memoryPageEntry *mpe = 0;
   #if SELECTION == SELECTION_NFUA
   mpe = pmd_findSwapPageCandidate_nfua(pmd);
   #elif SELECTION == SELECTION_LAPA
