@@ -106,14 +106,15 @@ void benchmark(char *s)
     for(int i = 0; i < BCHMRK_L0; i++) {
         array[i] = malloc(BCHMRK_L1 * sizeof(int));
     }
-    printf("AAAA\n");
     for (int i = 0; i < BCHMRK_L0; i++) {
+        sleep(1);
        for (int j = 0; j < BCHMRK_L1; j++) {
            array[i][j] = 0;
        }
     }
-    printf("BBBB\n");
+    printf("CCCC\n");
     for (int j = 0; j < BCHMRK_L1; j++) {
+        sleep(1);
        for (int i = 0; i < BCHMRK_L0; i++) {
            array[i][j] = 0;
        }
