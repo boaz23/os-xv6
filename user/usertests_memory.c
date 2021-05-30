@@ -1,6 +1,7 @@
 #include "kernel/param.h"
 #include "kernel/types.h"
 #include "kernel/riscv.h"
+#include "kernel/memlayout.h"
 #include "user.h"
 
 #define MAX_MEM_SZ (32 * PGSIZE)
@@ -155,9 +156,26 @@ invalid_memory_access_fork(char *s, char *p, int i, int expected_xstatus)
 }
 
 void
-stackguard_access(char *s)
+invalid_memory_access_special(char *s)
 {
-  invalid_memory_access_fork(s, (char *)PGROUNDDOWN((uint64)(sbrk(0) - 2*PGSIZE)), (uptime() * 127) % PGSIZE, -1);
+  uint64 p;
+  int offset;
+
+  offset = (uptime() * 127) % PGSIZE;
+
+  p = PGROUNDDOWN((uint64)(sbrk(0) - 2*PGSIZE));
+  invalid_memory_access_fork(s, (char *)p, 0, -1);
+  invalid_memory_access_fork(s, (char *)p, offset, -1);
+
+  invalid_memory_access_fork(s, (char *)MAXVA, 0, -1);
+  invalid_memory_access_fork(s, (char *)MAXVA, 1, -1);
+
+  invalid_memory_access_fork(s, (char *)TRAMPOLINE, 0, -1);
+  invalid_memory_access_fork(s, (char *)TRAMPOLINE, offset, -1);
+  invalid_memory_access_fork(s, (char *)TRAPFRAME, 0, -1);
+  invalid_memory_access_fork(s, (char *)TRAPFRAME, offset, -1);
+
+  invalid_memory_access_fork(s, (char *)-1L, 0, -1);
 }
 
 void
@@ -429,8 +447,8 @@ main(int argc, char *argv[])
   } tests[] = {
     { paging_sparse_memory, "paging_sparse_memory" },
     { paging_sparse_memory_fork, "paging_sparse_memory_fork" },
-    { stackguard_access, "stackguard_access" },
     { invalid_memory_access, "invalid_memory_access" },
+    { invalid_memory_access_special, "invalid_memory_access_special" },
     { realloc, "realloc" },
     #ifndef PG_REPLACE_NONE
     { full_memory, "full_memory" },
