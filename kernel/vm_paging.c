@@ -456,15 +456,15 @@ handlePageFault(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping
   if (ignoreSwapping) {
     return -1;
   }
-
+  
   pmd->pgfaultCount++;
-  pgAddr = PGROUNDDOWN(va);
 
-  if (pgAddr >= PGROUNDUP(sz)) {
+  if (va >= MAXVA) {
     return -1;
   }
 
-  pte = walk(pagetable, pgAddr, 0);
+  pgAddr = PGROUNDDOWN(va);
+  pte = walk(pagetable, va, 0);
   if (!pte) {
     // unmapped page
     return -1;
