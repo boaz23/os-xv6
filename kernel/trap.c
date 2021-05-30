@@ -38,6 +38,21 @@ invalidUserTrap(struct proc *p)
   p->killed = 1;
 }
 
+static void
+handleOtherUserTrap(struct proc *p, uint64 scause)
+{
+  #ifndef PG_REPLACE_NONE
+  if (scause == PGFAULT_INSTRUCTION || scause == PGFAULT_LOAD || scause == PGFAULT_STORE) {
+    uint64 stval = r_stval();
+    if (proc_handlePageFault(stval) >= 0) {
+      return;
+    }
+  }
+  #endif
+
+  invalidUserTrap(p);
+}
+
 //
 // handle an interrupt, exception, or system call from user space.
 // called from trampoline.S
@@ -47,9 +62,6 @@ usertrap(void)
 {
   int which_dev = 0;
   uint64 scause;
-  #ifndef PG_REPLACE_NONE
-  uint64 stval;
-  #endif
 
   if((r_sstatus() & SSTATUS_SPP) != 0)
     panic("usertrap: not from user mode");
@@ -82,20 +94,9 @@ usertrap(void)
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
-    #ifndef PG_REPLACE_NONE
-    if (scause == PGFAULT_INSTRUCTION || scause == PGFAULT_LOAD || scause == PGFAULT_STORE) {
-      stval = r_stval();
-      if (proc_handlePageFault(stval) >= 0) {
-        goto causeEnd;
-      }
-    }
-    #endif
-    invalidUserTrap(p);
+    handleOtherUserTrap(p, scause);
   }
 
-#ifndef PG_REPLACE_NONE
-causeEnd:
-#endif
   if(p->killed)
     exit(-1);
 
