@@ -46,7 +46,7 @@ kvmmake(void)
 
   // map kernel stacks
   proc_mapstacks(kpgtbl);
-  
+
   return kpgtbl;
 }
 
@@ -119,11 +119,7 @@ walkaddr(pagetable_t pagetable, uint64 va)
   pte = walk(pagetable, va, 0);
   if(pte == 0)
     return 0;
-  #ifdef PG_REPLACE_NONE
   if((*pte & PTE_V) == 0)
-  #else
-  if((*pte & (PTE_V | PTE_PG)) == 0)
-  #endif
     return 0;
   if((*pte & PTE_U) == 0)
     return 0;
@@ -267,7 +263,7 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, struct file *swapFile, int ignoreS
 
   if(newsz < oldsz)
     return oldsz;
-  
+
   #ifndef PG_REPLACE_NONE
   if (!ignoreSwapping) {
     totalAllocatedPages = pmd->pagesInMemory + pmd->pagesInDisk;
@@ -423,7 +419,7 @@ void
 uvmclear(pagetable_t pagetable, uint64 va)
 {
   pte_t *pte;
-  
+
   pte = walk(pagetable, va, 0);
   if(pte == 0)
     panic("uvmclear");

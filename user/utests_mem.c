@@ -333,7 +333,7 @@ full_memory_fork_realloc(char *s)
 {
   int allocationSize;
   char *prevEnd, *newEnd;
-  
+
   allocationSize = full_memory_fork_core(s);
   sbrk(-allocationSize);
   alloc(s, REGION_SZ, &prevEnd, &newEnd);
@@ -414,7 +414,7 @@ pagefaults_benchmark(char *s)
   int allocationSize;
   int pagefaultCount1 = 0, pagefaultCount2 = 0;
   int t0, t1, t2, tf;
-  
+
   t0 = uptime();
   allocationSize = REGION_SZ + PGSIZE;
   alloc(s, allocationSize, &prevEnd, &newEnd);
@@ -464,7 +464,7 @@ countfree()
     printf("pipe() failed in countfree()\n");
     exit(1);
   }
-  
+
   int pid = fork();
 
   if(pid < 0){
@@ -474,7 +474,7 @@ countfree()
 
   if(pid == 0){
     close(fds[0]);
-    
+
     while(1){
       uint64 a = (uint64) sbrk(4096);
       if(a == 0xffffffffffffffff){
@@ -511,7 +511,7 @@ countfree()
 
   close(fds[0]);
   wait((int*)0);
-  
+
   return n;
 }
 
@@ -532,7 +532,7 @@ run(void f(char *), char *s) {
     exit(0);
   } else {
     wait(&xstatus);
-    if(xstatus != 0) 
+    if(xstatus != 0)
       printf("FAILED\n");
     else
       printf("OK\n");
@@ -572,7 +572,6 @@ main(int argc, char *argv[])
   FOR_EACH(p_exec_argv, exec_argvs) {
     (*p_exec_argv)[0] = argv[0];
   }
-  printf("utests mem: '%s'\n", exec_argv_sparse_memory[0]);
 
   struct test {
     void (*f)(char *);
