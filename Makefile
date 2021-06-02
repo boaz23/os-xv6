@@ -150,7 +150,7 @@ UPROGS=\
 	$U/_wc\
 	$U/_zombie\
 	$U/_lazytests\
-	$U/_usertests_memory\
+	$U/_utests_mem\
 	$U/_test\
 	# $U/_usertests_some\
 
