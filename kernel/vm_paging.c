@@ -489,7 +489,7 @@ handlePageFault(pagetable_t pagetable, struct file *swapFile, int ignoreSwapping
   #endif
 
   if (!(*pte & PTE_PG)) {
-    // valid non-user page not paged out
+    // valid, non-user, page not, paged out
     // maybe stack guard page
     return -1;
   }
