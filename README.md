@@ -1,9 +1,9 @@
 ## General
 This is a repository used for our university OS course.  
-The operation system we worked on is **_xv6_** and the architecture is **_RISC-V_**.  
+The operating system we worked on was **_xv6_** and its architecture is **_RISC-V_**.  
 The original repository can be found here: [xv6-riscv]([xv6-riscv](https://github.com/mit-pdos/xv6-riscv))
 
-In the course, we implemented many improvements over the original xv6 (see below in the assignments section) and learned basic operation system concepts, some were not implemented by us.  
+In the course, we implemented many improvements over the original xv6 (see below in the assignments section) and learned basic operating systems concepts, only some were implemented by us.  
 The programming language we used was mostly _C_. However, we did a few things with the risc-v assembly.  
 We mostly worked in pair programming sessions.
 
