@@ -1,7 +1,7 @@
 ## General
 This is a repository used for our university OS course.  
 The operating system we worked on was **_xv6_** and its architecture is **_RISC-V_**.  
-The original repository can be found here: [xv6-riscv]([xv6-riscv](https://github.com/mit-pdos/xv6-riscv))
+The original repository can be found here: [xv6-riscv](https://github.com/mit-pdos/xv6-riscv)
 
 In the course, we implemented many improvements over the original xv6 (see below in the assignments section) and learned basic operating systems concepts, only some were implemented by us.  
 The programming language we used was mostly _C_. However, we did a few things with the risc-v assembly.  
@@ -15,7 +15,7 @@ The following sub-sections lists the summary of each assignment.
 **NOTE:** There was a 4th assignment, about the file system, but it was optional and we chose not to do it.
 
 ### [assignment-1](../../tree/assignment-1): System calls and process management
-- Implementing various process scheduling policies, changing the  time quantum
+- Implementing various process scheduling policies and changing the  time quantum
 - Storing and tracking several performance statistics for each process
 - Adding a system call for tracing other system calls
 - Adding a *PATH* environment variable
@@ -25,7 +25,7 @@ The full assignment description can be found [here](assignments-descriptions/ass
 ### [assignment-2](../../tree/assignment-2): Threads, signals and synchronization
 - Implementing threads
 - Implementing a basic signals mechanism
-- Implementing binary and counting semaphore
+- Implementing binary and counting semaphores
 
 [Full assignment description](assignments-descriptions/assignment-2.pdf)
 
