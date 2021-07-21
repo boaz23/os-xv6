@@ -20,7 +20,7 @@ The following sub-sections lists the summary of each assignment.
 - Adding a system call for tracing other system calls
 - Adding a *PATH* environment variable
 
-The full assignment description can be found [here](assignments-descriptions/assignment-1.pdf).
+[Full assignment description](assignments-descriptions/assignment-1.pdf).
 
 ### [assignment-2](../../tree/assignment-2): Threads, signals and synchronization
 - Implementing threads
