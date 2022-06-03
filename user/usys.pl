@@ -36,3 +36,19 @@ entry("getpid");
 entry("sbrk");
 entry("sleep");
 entry("uptime");
+
+# SIGNALS: syscalls entries
+entry("sigprocmask");
+entry("sigaction");
+entry("sigret");
+
+# THREADS: syscall entries
+entry("kthread_create");
+entry("kthread_id");
+entry("kthread_exit");
+entry("kthread_join");
+
+entry("bsem_alloc");
+entry("bsem_free");
+entry("bsem_down");
+entry("bsem_up");

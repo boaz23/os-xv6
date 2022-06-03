@@ -34,20 +34,22 @@ fetchstr(uint64 addr, char *buf, int max)
 static uint64
 argraw(int n)
 {
-  struct proc *p = myproc();
+  // THREADS: Change from myproc to mythread 
+  //          since the thread have the trapframe
+  struct thread *t = mythread();
   switch (n) {
   case 0:
-    return p->trapframe->a0;
+    return t->trapframe->a0;
   case 1:
-    return p->trapframe->a1;
+    return t->trapframe->a1;
   case 2:
-    return p->trapframe->a2;
+    return t->trapframe->a2;
   case 3:
-    return p->trapframe->a3;
+    return t->trapframe->a3;
   case 4:
-    return p->trapframe->a4;
+    return t->trapframe->a4;
   case 5:
-    return p->trapframe->a5;
+    return t->trapframe->a5;
   }
   panic("argraw");
   return -1;
@@ -105,42 +107,75 @@ extern uint64 sys_wait(void);
 extern uint64 sys_write(void);
 extern uint64 sys_uptime(void);
 
+// SIGNALS: syscalls service layer declarations
+extern uint64 sys_sigprocmask(void);
+extern uint64 sys_sigaction(void);
+extern uint64 sys_sigret(void);
+
+// THREADS: syscalls service layer declarations
+extern uint64 sys_kthread_create(void);
+extern uint64 sys_kthread_id(void);
+extern uint64 sys_kthread_exit(void);
+extern uint64 sys_kthread_join(void);
+
+extern uint64 sys_bsem_alloc(void);
+extern uint64 sys_bsem_free(void);
+extern uint64 sys_bsem_down(void);
+extern uint64 sys_bsem_up(void);
+
 static uint64 (*syscalls[])(void) = {
-[SYS_fork]    sys_fork,
-[SYS_exit]    sys_exit,
-[SYS_wait]    sys_wait,
-[SYS_pipe]    sys_pipe,
-[SYS_read]    sys_read,
-[SYS_kill]    sys_kill,
-[SYS_exec]    sys_exec,
-[SYS_fstat]   sys_fstat,
-[SYS_chdir]   sys_chdir,
-[SYS_dup]     sys_dup,
-[SYS_getpid]  sys_getpid,
-[SYS_sbrk]    sys_sbrk,
-[SYS_sleep]   sys_sleep,
-[SYS_uptime]  sys_uptime,
-[SYS_open]    sys_open,
-[SYS_write]   sys_write,
-[SYS_mknod]   sys_mknod,
-[SYS_unlink]  sys_unlink,
-[SYS_link]    sys_link,
-[SYS_mkdir]   sys_mkdir,
-[SYS_close]   sys_close,
+[SYS_fork]   sys_fork,
+[SYS_exit]   sys_exit,
+[SYS_wait]   sys_wait,
+[SYS_pipe]   sys_pipe,
+[SYS_read]   sys_read,
+[SYS_kill]   sys_kill,
+[SYS_exec]   sys_exec,
+[SYS_fstat]  sys_fstat,
+[SYS_chdir]  sys_chdir,
+[SYS_dup]    sys_dup,
+[SYS_getpid] sys_getpid,
+[SYS_sbrk]   sys_sbrk,
+[SYS_sleep]  sys_sleep,
+[SYS_uptime] sys_uptime,
+[SYS_open]   sys_open,
+[SYS_write]  sys_write,
+[SYS_mknod]  sys_mknod,
+[SYS_unlink] sys_unlink,
+[SYS_link]   sys_link,
+[SYS_mkdir]  sys_mkdir,
+[SYS_close]  sys_close,
+
+// SIGNALS: syscalls map
+[SYS_sigprocmask] sys_sigprocmask,
+[SYS_sigaction]   sys_sigaction,
+[SYS_sigret]      sys_sigret,
+
+// THREADS: syscalls map
+[SYS_kthread_create] sys_kthread_create,
+[SYS_kthread_id]     sys_kthread_id,
+[SYS_kthread_exit]   sys_kthread_exit,
+[SYS_kthread_join]   sys_kthread_join,
+
+[SYS_bsem_alloc] sys_bsem_alloc,
+[SYS_bsem_free]  sys_bsem_free,
+[SYS_bsem_down]  sys_bsem_down,
+[SYS_bsem_up]    sys_bsem_up
 };
 
 void
 syscall(void)
 {
   int num;
-  struct proc *p = myproc();
+  // THREADS: 
+  struct thread *t = mythread();
 
-  num = p->trapframe->a7;
+  num = t->trapframe->a7;
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
-    p->trapframe->a0 = syscalls[num]();
+    t->trapframe->a0 = syscalls[num]();
   } else {
-    printf("%d %s: unknown sys call %d\n",
-            p->pid, p->name, num);
-    p->trapframe->a0 = -1;
+    printf("proc: %d thread: %d %s: unknown sys call %d\n",
+            t->process->pid, t->tid, t->process->name, num);
+    t->trapframe->a0 = -1;
   }
 }

@@ -6,6 +6,7 @@
 #include "proc.h"
 #include "defs.h"
 #include "elf.h"
+#include "signal.h"
 
 static int loadseg(pde_t *pgdir, uint64 addr, struct inode *ip, uint offset, uint sz);
 
@@ -19,10 +20,23 @@ exec(char *path, char **argv)
   struct inode *ip;
   struct proghdr ph;
   pagetable_t pagetable = 0, oldpagetable;
+  struct trapframe *trapframe;
+
+  // stays my proc 
   struct proc *p = myproc();
 
-  begin_op();
+  // THREADS: exec early bail if process already killed
+  trace_thread_act("exec", "checking killed status");
+  acquire(&p->lock);
+  if (p->killed) {
+    trace_thread_act("exec", "process was already killed");
+    release(&p->lock);
+    return -1;
+  }
+  release(&p->lock);
 
+  begin_op();
+  
   if((ip = namei(path)) == 0){
     end_op();
     return -1;
@@ -62,6 +76,8 @@ exec(char *path, char **argv)
   ip = 0;
 
   p = myproc();
+  // THREADS: exec trapframe
+  trapframe = mythread()->trapframe;
   uint64 oldsz = p->sz;
 
   // Allocate two pages at the next page boundary.
@@ -97,24 +113,38 @@ exec(char *path, char **argv)
   if(copyout(pagetable, sp, (char *)ustack, (argc+1)*sizeof(uint64)) < 0)
     goto bad;
 
+  // THREADS: exec all killing other threads
+  if (proc_collapse_all_other_threads() < 0) {
+    // this thread isn't the first to kill the process
+    // or the process got a signal which caused it to get killed
+    goto bad;
+  }
+
   // arguments to user main(argc, argv)
   // argc is returned via the system call return
   // value, which goes in a0.
-  p->trapframe->a1 = sp;
+  trapframe->a1 = sp;
 
   // Save program name for debugging.
   for(last=s=path; *s; s++)
     if(*s == '/')
       last = s+1;
   safestrcpy(p->name, last, sizeof(p->name));
-    
+
   // Commit to the user image.
   oldpagetable = p->pagetable;
   p->pagetable = pagetable;
   p->sz = sz;
-  p->trapframe->epc = elf.entry;  // initial program counter = main
-  p->trapframe->sp = sp; // initial stack pointer
+  trapframe->epc = elf.entry;  // initial program counter = main
+  trapframe->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
+
+  // clear custom signals
+  for(int i = 0; i < MAX_SIG; i++){
+    if(p->signal_handlers[i] != (void *)SIG_DFL &&  p->signal_handlers[i] != (void *)SIG_IGN){
+      p->signal_handlers[i] = (void *)SIG_DFL;
+    }
+  }
 
   return argc; // this ends up in a0, the first argument to main(argc, argv)
 

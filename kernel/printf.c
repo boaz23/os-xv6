@@ -59,22 +59,11 @@ printptr(uint64 x)
     consputc(digits[x >> (sizeof(uint64) * 8 - 4)]);
 }
 
-// Print to the console. only understands %d, %x, %p, %s.
 void
-printf(char *fmt, ...)
+vprintf_core(char *fmt, va_list ap)
 {
-  va_list ap;
-  int i, c, locking;
+  int i, c;
   char *s;
-
-  locking = pr.locking;
-  if(locking)
-    acquire(&pr.lock);
-
-  if (fmt == 0)
-    panic("null fmt");
-
-  va_start(ap, fmt);
   for(i = 0; (c = fmt[i] & 0xff) != 0; i++){
     if(c != '%'){
       consputc(c);
@@ -109,6 +98,84 @@ printf(char *fmt, ...)
       break;
     }
   }
+}
+
+int
+print_acquire_lock()
+{
+  int locking;
+
+  locking = pr.locking;
+  if(locking) {
+    acquire(&pr.lock);
+  }
+  return locking;
+}
+
+void
+print_release_lock(int locking)
+{
+  if (locking) {
+    release(&pr.lock);
+  }
+}
+
+void
+vprintf_no_lock(char *fmt, va_list ap)
+{
+  if (fmt == 0)
+    panic("null fmt");
+
+  vprintf_core(fmt, ap);
+}
+
+void
+vprintf(char *fmt, va_list ap)
+{
+  int locking;
+
+  locking = pr.locking;
+  if(locking)
+    acquire(&pr.lock);
+
+  if (fmt == 0)
+    panic("null fmt");
+
+  vprintf_core(fmt, ap);
+
+  if(locking)
+    release(&pr.lock);
+}
+
+void
+printf_no_lock(char *fmt, ...)
+{
+  va_list ap;
+  if (fmt == 0)
+    panic("null fmt");
+
+  va_start(ap, fmt);
+  vprintf_core(fmt, ap);
+  va_end(ap);
+}
+
+// Print to the console. only understands %d, %x, %p, %s.
+void
+printf(char *fmt, ...)
+{
+  va_list ap;
+  int locking;
+
+  locking = pr.locking;
+  if(locking)
+    acquire(&pr.lock);
+
+  if (fmt == 0)
+    panic("null fmt");
+
+  va_start(ap, fmt);
+  vprintf_core(fmt, ap);
+  va_end(ap);
 
   if(locking)
     release(&pr.lock);
@@ -120,6 +187,21 @@ panic(char *s)
   pr.locking = 0;
   printf("panic: ");
   printf(s);
+  printf("\n");
+  panicked = 1; // freeze uart output from other CPUs
+  for(;;)
+    ;
+}
+void
+panicf(char *fmt, ...)
+{
+  va_list ap;
+
+  pr.locking = 0;
+  printf("panic: ");
+  va_start(ap, fmt);
+  vprintf(fmt, ap);
+  va_end(ap);
   printf("\n");
   panicked = 1; // freeze uart output from other CPUs
   for(;;)

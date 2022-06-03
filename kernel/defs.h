@@ -1,9 +1,13 @@
+#include <stdarg.h>
+
 struct buf;
+struct bsem;
 struct context;
 struct file;
 struct inode;
 struct pipe;
 struct proc;
+struct thread;
 struct spinlock;
 struct sleeplock;
 struct stat;
@@ -16,6 +20,13 @@ void            brelse(struct buf*);
 void            bwrite(struct buf*);
 void            bpin(struct buf*);
 void            bunpin(struct buf*);
+
+// bsem.c
+void            bseminit(void);
+int             bsem_alloc(void);
+void            bsem_free(int);
+void            bsem_down(int);
+void            bsem_up(int);
 
 // console.c
 void            consoleinit(void);
@@ -78,8 +89,14 @@ int             pipewrite(struct pipe*, uint64, int);
 
 // printf.c
 void            printf(char*, ...);
+void            vprintf(char*, va_list);
+void            printf_no_lock(char *, ...);
+void            vprintf_no_lock(char *, va_list);
 void            panic(char*) __attribute__((noreturn));
+void            panicf(char *fmt, ...) __attribute__((noreturn));
 void            printfinit(void);
+int             print_acquire_lock();
+void            print_release_lock(int);
 
 // proc.c
 int             cpuid(void);
@@ -89,10 +106,12 @@ int             growproc(int);
 void            proc_mapstacks(pagetable_t);
 pagetable_t     proc_pagetable(struct proc *);
 void            proc_freepagetable(pagetable_t, uint64);
-int             kill(int);
+int             kill(int, int);
 struct cpu*     mycpu(void);
 struct cpu*     getmycpu(void);
 struct proc*    myproc();
+// THREADS: mythread
+struct thread*  mythread();
 void            procinit(void);
 void            scheduler(void) __attribute__((noreturn));
 void            sched(void);
@@ -105,6 +124,23 @@ void            yield(void);
 int             either_copyout(int user_dst, uint64 dst, void *src, uint64 len);
 int             either_copyin(void *dst, int user_src, uint64 src, uint64 len);
 void            procdump(void);
+
+// SIGNALS: public function declarations
+void            proc_handle_special_signals(struct thread *t);
+int             proc_find_custom_signal_handler(struct proc *p, struct sigaction *user_action, int *p_signum);
+// SIGNALS: syscalls function declarations
+uint            sigprocmask(uint sigmask);
+int             sigaction(int signum, uint64 act_addr, uint64 old_act_addr);
+void            sigret(void);
+
+// THREADS: public function declarations
+int             proc_collapse_all_other_threads();
+// THREADS: syscalls function declarations
+int             kthread_create(uint64 start_func, uint64 up_usp);
+void            kthread_exit(int status);
+int             kthread_join(int thread_id, uint64 up_status);
+
+void trace_thread_act(const char *f, const char *fmt, ...);
 
 // swtch.S
 void            swtch(struct context*, struct context*);
